@@ -161,7 +161,7 @@ export const getEligiblePatients = query({
         continue; // Skip: opted out of SMS
       }
 
-      const patient = await ctx.db.get(patientId);
+      const patient = await ctx.db.get(patientId) as any;
       if (!patient || patient.orgId !== orgId || !patient.isActive) {
         continue;
       }

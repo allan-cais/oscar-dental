@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { ClerkProvider } from "@clerk/nextjs";
 import ConvexClientProvider from "@/components/convex-client-provider";
 import { Toaster } from "@/components/ui/sonner";
 import "./globals.css";
@@ -20,12 +21,18 @@ export const metadata: Metadata = {
     "Hybrid-intelligence dental practice management platform by Custom AI Studio",
 };
 
+const clerkKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
+const isClerkConfigured =
+  clerkKey &&
+  !clerkKey.includes("placeholder") &&
+  clerkKey.startsWith("pk_");
+
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  return (
+  const content = (
     <html lang="en">
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
@@ -37,4 +44,19 @@ export default function RootLayout({
       </body>
     </html>
   );
+
+  // Only wrap with ClerkProvider when real keys are configured
+  if (isClerkConfigured) {
+    return (
+      <ClerkProvider
+        appearance={{
+          cssLayerName: "clerk",
+        }}
+      >
+        {content}
+      </ClerkProvider>
+    );
+  }
+
+  return content;
 }

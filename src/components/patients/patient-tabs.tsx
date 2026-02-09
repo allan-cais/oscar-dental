@@ -1,17 +1,24 @@
 "use client"
 
+import { useState } from "react"
+import { useQuery, useMutation } from "convex/react"
+import { api } from "@/../convex/_generated/api"
+import type { Id } from "@/../convex/_generated/dataModel"
+import { toast } from "sonner"
 import {
   Calendar,
   FileText,
+  FileText as FileTextIcon,
   CreditCard,
   MessageSquare,
   Shield,
   AlertTriangle,
   Clock,
   DollarSign,
-  User,
   CheckCircle2,
   XCircle,
+  Bell,
+  Plus,
 } from "lucide-react"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import {
@@ -22,7 +29,26 @@ import {
   CardContent,
 } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 import { Separator } from "@/components/ui/separator"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import {
   Table,
   TableHeader,
@@ -79,40 +105,46 @@ function EmptyState({ icon: Icon, title, description }: {
 }
 
 // ---------------------------------------------------------------------------
-// Demo data (shown when Convex is not connected)
-// ---------------------------------------------------------------------------
-
-const demoAppointments = [
-  { date: "2026-02-12", time: "09:00", provider: "Dr. Sarah Chen", type: "Hygiene Cleaning", status: "scheduled" as const, production: 250 },
-  { date: "2026-02-20", time: "14:30", provider: "Dr. James Wilson", type: "Crown Prep", status: "confirmed" as const, production: 1200 },
-  { date: "2026-01-15", time: "10:00", provider: "Dr. Sarah Chen", type: "Periodic Exam", status: "completed" as const, production: 150 },
-  { date: "2025-12-03", time: "11:30", provider: "Dr. Sarah Chen", type: "Hygiene Cleaning", status: "completed" as const, production: 250 },
-  { date: "2025-11-10", time: "09:00", provider: "Dr. James Wilson", type: "Filling - MOD", status: "completed" as const, production: 450 },
-]
-
-const demoClaims = [
-  { claimNumber: "CLM-2026-0142", date: "2026-01-15", payer: "Delta Dental", status: "submitted" as const, charged: 150, paid: 0 },
-  { claimNumber: "CLM-2025-0891", date: "2025-12-03", payer: "Delta Dental", status: "paid" as const, charged: 250, paid: 200 },
-  { claimNumber: "CLM-2025-0756", date: "2025-11-10", payer: "Delta Dental", status: "paid" as const, charged: 450, paid: 360 },
-  { claimNumber: "CLM-2025-0612", date: "2025-10-01", payer: "Delta Dental", status: "denied" as const, charged: 800, paid: 0 },
-  { claimNumber: "CLM-2025-0611", date: "2025-10-01", payer: "Delta Dental", status: "appealed" as const, charged: 800, paid: 0 },
-]
-
-const demoPayments = [
-  { date: "2026-01-15", type: "patient" as const, amount: 35, method: "card" as const, status: "completed" as const },
-  { date: "2025-12-03", type: "insurance" as const, amount: 200, method: "insurance" as const, status: "completed" as const },
-  { date: "2025-12-03", type: "patient" as const, amount: 50, method: "text_to_pay" as const, status: "completed" as const },
-  { date: "2025-11-10", type: "insurance" as const, amount: 360, method: "insurance" as const, status: "completed" as const },
-  { date: "2025-11-10", type: "patient" as const, amount: 90, method: "card" as const, status: "completed" as const },
-]
-
-// ---------------------------------------------------------------------------
 // Tab: Overview
 // ---------------------------------------------------------------------------
 
-function OverviewTab({ patient }: { patient: PatientData | null }) {
+function OverviewTab({ patient, patientId }: { patient: PatientData | null; patientId: Id<"patients"> }) {
   const nextRecallOverdue =
     patient?.nextRecallDate && new Date(patient.nextRecallDate) < new Date()
+
+  // Query real appointments for this patient
+  const appointments = useQuery(
+    api.scheduling.queries.getByPatient as any,
+    patient ? { patientId } : "skip"
+  ) as any[] | undefined
+
+  // Query providers so we can resolve provider names
+  const providers = useQuery(api.providers.queries.list as any, {}) as any[] | undefined
+  const providerMap = new Map<string, string>()
+  if (providers) {
+    for (const p of providers) {
+      providerMap.set(p._id, `Dr. ${p.lastName}`)
+    }
+  }
+
+  // Find next upcoming appointment
+  const today = new Date().toISOString().split("T")[0]
+  const nextAppt = appointments
+    ?.filter((a: any) => a.date >= today && a.status !== "cancelled" && a.status !== "no_show")
+    .sort((a: any, b: any) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime))[0]
+
+  // Find last completed visit
+  const lastVisit = appointments
+    ?.filter((a: any) => a.date < today || a.status === "completed")
+    .sort((a: any, b: any) => b.date.localeCompare(a.date) || b.startTime.localeCompare(a.startTime))[0]
+
+  // Format time from "HH:mm" to "9:00 AM" style
+  function formatTime(time: string): string {
+    const [h, m] = time.split(":").map(Number)
+    const period = h >= 12 ? "PM" : "AM"
+    const hour12 = h === 0 ? 12 : h > 12 ? h - 12 : h
+    return `${hour12}:${String(m).padStart(2, "0")} ${period}`
+  }
 
   return (
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -124,14 +156,14 @@ function OverviewTab({ patient }: { patient: PatientData | null }) {
             Next Appointment
           </CardDescription>
           <CardTitle className="text-lg">
-            {patient ? "Feb 12, 2026" : "---"}
+            {!patient ? "---" : nextAppt ? formatDate(nextAppt.date) : "---"}
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {patient ? (
+          {nextAppt ? (
             <div className="text-sm text-muted-foreground">
-              <p>Dr. Sarah Chen</p>
-              <p>Hygiene Cleaning - 9:00 AM</p>
+              <p>{providerMap.get(nextAppt.providerId) ?? "Provider"}</p>
+              <p>{nextAppt.appointmentType ?? "Appointment"} - {formatTime(nextAppt.startTime)}</p>
             </div>
           ) : (
             <p className="text-sm text-muted-foreground">None scheduled</p>
@@ -146,14 +178,10 @@ function OverviewTab({ patient }: { patient: PatientData | null }) {
             <FileText className="size-3.5" />
             Open Claims
           </CardDescription>
-          <CardTitle className="text-lg">
-            {patient ? "2" : "---"}
-          </CardTitle>
+          <CardTitle className="text-lg">---</CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-sm text-muted-foreground">
-            {patient ? `Total: ${formatCurrency(950)}` : "No data available"}
-          </p>
+          <p className="text-sm text-muted-foreground">No data available</p>
         </CardContent>
       </Card>
 
@@ -192,14 +220,14 @@ function OverviewTab({ patient }: { patient: PatientData | null }) {
             Last Visit
           </CardDescription>
           <CardTitle className="text-lg">
-            {patient?.lastVisitDate
-              ? formatDate(patient.lastVisitDate)
-              : "---"}
+            {lastVisit ? formatDate(lastVisit.date) : patient?.lastVisitDate ? formatDate(patient.lastVisitDate) : "---"}
           </CardTitle>
         </CardHeader>
         <CardContent>
           <p className="text-sm text-muted-foreground">
-            {patient?.lastVisitDate ? "Periodic Exam" : "No visits on record"}
+            {lastVisit
+              ? `${providerMap.get(lastVisit.providerId) ?? "Provider"} - ${lastVisit.appointmentType ?? "Visit"}`
+              : "No visits on record"}
           </p>
         </CardContent>
       </Card>
@@ -427,10 +455,24 @@ const appointmentStatusConfig: Record<string, { label: string; className: string
   no_show: { label: "No Show", className: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400" },
 }
 
-function AppointmentsTab({ patient }: { patient: PatientData | null }) {
+function AppointmentsTab({ patient, patientId }: { patient: PatientData | null; patientId: Id<"patients"> }) {
+  const appointments = useQuery(
+    api.scheduling.queries.getByPatient as any,
+    patient ? { patientId } : "skip"
+  ) as any[] | undefined
+
+  // Query providers for name resolution
+  const providers = useQuery(api.providers.queries.list as any, {}) as any[] | undefined
+  const providerMap = new Map<string, string>()
+  if (providers) {
+    for (const p of providers) {
+      providerMap.set(p._id, `Dr. ${p.lastName}`)
+    }
+  }
+
   const today = new Date().toISOString().split("T")[0]
-  const upcoming = demoAppointments.filter((a) => a.date >= today)
-  const past = demoAppointments.filter((a) => a.date < today)
+  const upcoming = appointments?.filter((a: any) => a.date >= today) ?? []
+  const past = appointments?.filter((a: any) => a.date < today) ?? []
 
   if (!patient) {
     return (
@@ -438,6 +480,16 @@ function AppointmentsTab({ patient }: { patient: PatientData | null }) {
         icon={Calendar}
         title="Appointments unavailable"
         description="Connect to the database to view appointment history."
+      />
+    )
+  }
+
+  if (appointments !== undefined && appointments.length === 0) {
+    return (
+      <EmptyState
+        icon={Calendar}
+        title="No appointments"
+        description="No appointment records found for this patient. Appointments will appear here after syncing from the PMS."
       />
     )
   }
@@ -461,18 +513,18 @@ function AppointmentsTab({ patient }: { patient: PatientData | null }) {
                   <TableHead>Provider</TableHead>
                   <TableHead>Type</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Production</TableHead>
+                  <TableHead className="text-right">Duration</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {upcoming.map((appt, i) => {
+                {upcoming.map((appt: any) => {
                   const statusCfg = appointmentStatusConfig[appt.status]
                   return (
-                    <TableRow key={i}>
+                    <TableRow key={appt._id}>
                       <TableCell>{formatDate(appt.date)}</TableCell>
-                      <TableCell>{appt.time}</TableCell>
-                      <TableCell>{appt.provider}</TableCell>
-                      <TableCell>{appt.type}</TableCell>
+                      <TableCell>{appt.startTime}</TableCell>
+                      <TableCell>{providerMap.get(appt.providerId) ?? "Provider"}</TableCell>
+                      <TableCell>{appt.appointmentType ?? "—"}</TableCell>
                       <TableCell>
                         <Badge
                           variant="outline"
@@ -482,7 +534,7 @@ function AppointmentsTab({ patient }: { patient: PatientData | null }) {
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right">
-                        {formatCurrency(appt.production)}
+                        {appt.duration} min
                       </TableCell>
                     </TableRow>
                   )
@@ -510,18 +562,18 @@ function AppointmentsTab({ patient }: { patient: PatientData | null }) {
                   <TableHead>Provider</TableHead>
                   <TableHead>Type</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Production</TableHead>
+                  <TableHead className="text-right">Duration</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {past.map((appt, i) => {
+                {past.map((appt: any) => {
                   const statusCfg = appointmentStatusConfig[appt.status]
                   return (
-                    <TableRow key={i}>
+                    <TableRow key={appt._id}>
                       <TableCell>{formatDate(appt.date)}</TableCell>
-                      <TableCell>{appt.time}</TableCell>
-                      <TableCell>{appt.provider}</TableCell>
-                      <TableCell>{appt.type}</TableCell>
+                      <TableCell>{appt.startTime}</TableCell>
+                      <TableCell>{providerMap.get(appt.providerId) ?? "Provider"}</TableCell>
+                      <TableCell>{appt.appointmentType ?? "—"}</TableCell>
                       <TableCell>
                         <Badge
                           variant="outline"
@@ -531,7 +583,7 @@ function AppointmentsTab({ patient }: { patient: PatientData | null }) {
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right">
-                        {formatCurrency(appt.production)}
+                        {appt.duration} min
                       </TableCell>
                     </TableRow>
                   )
@@ -541,10 +593,6 @@ function AppointmentsTab({ patient }: { patient: PatientData | null }) {
           </div>
         )}
       </div>
-
-      <p className="text-xs text-muted-foreground italic">
-        Showing demo data. Live data will appear when Convex is connected.
-      </p>
     </div>
   )
 }
@@ -566,13 +614,38 @@ const claimStatusConfig: Record<string, { label: string; className: string }> = 
   rejected: { label: "Rejected", className: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" },
 }
 
-function ClaimsTab({ patient }: { patient: PatientData | null }) {
+function ClaimsTab({ patient, patientId }: { patient: PatientData | null; patientId: Id<"patients"> }) {
+  const claims = useQuery(
+    api.claims.queries.getByPatient as any,
+    patient ? { patientId } : "skip"
+  ) as any[] | undefined
+
   if (!patient) {
     return (
       <EmptyState
         icon={FileText}
         title="Claims unavailable"
         description="Connect to the database to view claims history."
+      />
+    )
+  }
+
+  if (claims === undefined) {
+    return (
+      <div className="space-y-2">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <div key={i} className="h-12 bg-muted animate-pulse rounded" />
+        ))}
+      </div>
+    )
+  }
+
+  if (claims.length === 0) {
+    return (
+      <EmptyState
+        icon={FileText}
+        title="No claims found"
+        description="No claims have been created for this patient yet. Claims are generated when appointments are completed."
       />
     )
   }
@@ -592,13 +665,17 @@ function ClaimsTab({ patient }: { patient: PatientData | null }) {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {demoClaims.map((claim, i) => {
+            {claims.map((claim: any) => {
               const statusCfg = claimStatusConfig[claim.status]
               return (
-                <TableRow key={i}>
-                  <TableCell className="font-medium">{claim.claimNumber}</TableCell>
-                  <TableCell>{formatDate(claim.date)}</TableCell>
-                  <TableCell>{claim.payer}</TableCell>
+                <TableRow key={claim._id}>
+                  <TableCell className="font-medium">
+                    {claim.claimNumber || `CLM-${String(claim._id).slice(0, 8).toUpperCase()}`}
+                  </TableCell>
+                  <TableCell>
+                    {claim.createdAt ? new Date(claim.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—"}
+                  </TableCell>
+                  <TableCell>{claim.payerName}</TableCell>
                   <TableCell>
                     <Badge
                       variant="outline"
@@ -608,10 +685,10 @@ function ClaimsTab({ patient }: { patient: PatientData | null }) {
                     </Badge>
                   </TableCell>
                   <TableCell className="text-right">
-                    {formatCurrency(claim.charged)}
+                    {formatCurrency(claim.totalCharged ?? 0)}
                   </TableCell>
                   <TableCell className="text-right">
-                    {formatCurrency(claim.paid)}
+                    {formatCurrency(claim.totalPaid ?? 0)}
                   </TableCell>
                 </TableRow>
               )
@@ -619,10 +696,6 @@ function ClaimsTab({ patient }: { patient: PatientData | null }) {
           </TableBody>
         </Table>
       </div>
-
-      <p className="text-xs text-muted-foreground italic">
-        Showing demo data. Live data will appear when Convex is connected.
-      </p>
     </div>
   )
 }
@@ -630,15 +703,6 @@ function ClaimsTab({ patient }: { patient: PatientData | null }) {
 // ---------------------------------------------------------------------------
 // Tab: Payments
 // ---------------------------------------------------------------------------
-
-const paymentTypeLabels: Record<string, string> = {
-  insurance: "Insurance",
-  patient: "Patient",
-  text_to_pay: "Text-to-Pay",
-  card_on_file: "Card on File",
-  payment_plan: "Payment Plan",
-  refund: "Refund",
-}
 
 const paymentMethodLabels: Record<string, string> = {
   card: "Credit Card",
@@ -657,6 +721,13 @@ const paymentStatusConfig: Record<string, { label: string; className: string }> 
 }
 
 function PaymentsTab({ patient }: { patient: PatientData | null }) {
+  // Fetch PMS payments filtered by patient's pmsPatientId (NexHealth sandbox returns empty; will populate in production)
+  const pmsPatientId = (patient as any)?.pmsPatientId
+  const payments = useQuery(
+    (api as any).pmsPayments.queries.list,
+    pmsPatientId ? { patientId: pmsPatientId } : "skip"
+  ) as any[] | undefined
+
   if (!patient) {
     return (
       <EmptyState
@@ -669,6 +740,16 @@ function PaymentsTab({ patient }: { patient: PatientData | null }) {
 
   const patientBal = patient.patientBalance ?? 0
   const insuranceBal = patient.insuranceBalance ?? 0
+
+  // Map Convex payment docs to the UI shape
+  const mappedPayments = (payments ?? []).map((doc: any) => ({
+    id: doc._id,
+    date: doc.date ?? new Date(doc.createdAt).toISOString().split("T")[0],
+    description: doc.note ?? "Payment",
+    amount: doc.amount / 100,
+    method: doc.paymentMethod ?? "unknown",
+    status: "completed" as const,
+  }))
 
   return (
     <div className="space-y-4">
@@ -697,7 +778,7 @@ function PaymentsTab({ patient }: { patient: PatientData | null }) {
         </CardContent>
       </Card>
 
-      {/* Payment plan placeholder */}
+      {/* TODO: Wire payment plan to Convex query (paymentPlans.queries.getByPatient) — requires Stripe integration for active plan details */}
       <Card>
         <CardHeader>
           <CardTitle>Payment Plan</CardTitle>
@@ -706,48 +787,62 @@ function PaymentsTab({ patient }: { patient: PatientData | null }) {
       </Card>
 
       {/* Payment history */}
-      <div className="rounded-lg border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Date</TableHead>
-              <TableHead>Type</TableHead>
-              <TableHead>Amount</TableHead>
-              <TableHead>Method</TableHead>
-              <TableHead>Status</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {demoPayments.map((payment, i) => {
-              const statusCfg = paymentStatusConfig[payment.status]
-              return (
-                <TableRow key={i}>
-                  <TableCell>{formatDate(payment.date)}</TableCell>
-                  <TableCell>{paymentTypeLabels[payment.type] ?? payment.type}</TableCell>
-                  <TableCell className="font-medium">
-                    {formatCurrency(payment.amount)}
-                  </TableCell>
-                  <TableCell>
-                    {paymentMethodLabels[payment.method] ?? payment.method}
-                  </TableCell>
-                  <TableCell>
-                    <Badge
-                      variant="outline"
-                      className={cn("border-transparent", statusCfg?.className)}
-                    >
-                      {statusCfg?.label ?? payment.status}
-                    </Badge>
-                  </TableCell>
-                </TableRow>
-              )
-            })}
-          </TableBody>
-        </Table>
-      </div>
-
-      <p className="text-xs text-muted-foreground italic">
-        Showing demo data. Live data will appear when Convex is connected.
-      </p>
+      {payments === undefined ? (
+        <div className="space-y-2">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} className="h-12 bg-muted animate-pulse rounded" />
+          ))}
+        </div>
+      ) : mappedPayments.length === 0 ? (
+        <Card>
+          <CardContent className="pt-6">
+            <EmptyState
+              icon={CreditCard}
+              title="No payment history"
+              description="Payment records will appear here after syncing from the PMS."
+            />
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="rounded-lg border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Date</TableHead>
+                <TableHead>Description</TableHead>
+                <TableHead>Amount</TableHead>
+                <TableHead>Method</TableHead>
+                <TableHead>Status</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {mappedPayments.map((payment) => {
+                const statusCfg = paymentStatusConfig[payment.status]
+                return (
+                  <TableRow key={payment.id}>
+                    <TableCell>{formatDate(payment.date)}</TableCell>
+                    <TableCell>{payment.description}</TableCell>
+                    <TableCell className="font-medium">
+                      {formatCurrency(payment.amount)}
+                    </TableCell>
+                    <TableCell>
+                      {paymentMethodLabels[payment.method] ?? payment.method}
+                    </TableCell>
+                    <TableCell>
+                      <Badge
+                        variant="outline"
+                        className={cn("border-transparent", statusCfg?.className)}
+                      >
+                        {statusCfg?.label ?? payment.status}
+                      </Badge>
+                    </TableCell>
+                  </TableRow>
+                )
+              })}
+            </TableBody>
+          </Table>
+        </div>
+      )}
     </div>
   )
 }
@@ -875,7 +970,7 @@ function CommunicationsTab({ patient }: { patient: PatientData | null }) {
         </CardContent>
       </Card>
 
-      {/* Communication history placeholder */}
+      {/* TODO: Wire communication history to a messages/communications Convex table — requires Twilio integration for SMS logs and email service for email logs */}
       <Card>
         <CardHeader>
           <CardTitle>Communication History</CardTitle>
@@ -897,6 +992,22 @@ function CommunicationsTab({ patient }: { patient: PatientData | null }) {
 // ---------------------------------------------------------------------------
 
 export function PatientTabs({ patientId, patient }: PatientTabsProps) {
+  // Alerts state
+  const alerts = useQuery((api as any).patientAlerts.queries.listByPatient, { patientId: patientId as any })
+  const createAlert = useMutation((api as any).patientAlerts.mutations.create)
+  const deactivateAlert = useMutation((api as any).patientAlerts.mutations.deactivate)
+  const [alertDialogOpen, setAlertDialogOpen] = useState(false)
+  const [newAlertMessage, setNewAlertMessage] = useState("")
+  const [newAlertType, setNewAlertType] = useState("general")
+
+  // Documents state
+  const documents = useQuery((api as any).patientDocuments.queries.listByPatient, { patientId: patientId as any })
+  const createDocument = useMutation((api as any).patientDocuments.mutations.create)
+  const [docDialogOpen, setDocDialogOpen] = useState(false)
+  const [newDocName, setNewDocName] = useState("")
+  const [newDocType, setNewDocType] = useState("other")
+  const [newDocUrl, setNewDocUrl] = useState("")
+
   return (
     <Tabs defaultValue="overview">
       <TabsList className="w-full justify-start overflow-x-auto" variant="line">
@@ -906,10 +1017,18 @@ export function PatientTabs({ patientId, patient }: PatientTabsProps) {
         <TabsTrigger value="claims">Claims</TabsTrigger>
         <TabsTrigger value="payments">Payments</TabsTrigger>
         <TabsTrigger value="communications">Communications</TabsTrigger>
+        <TabsTrigger value="alerts">
+          <Bell className="mr-1.5 size-4" />
+          Alerts
+        </TabsTrigger>
+        <TabsTrigger value="documents">
+          <FileTextIcon className="mr-1.5 size-4" />
+          Documents
+        </TabsTrigger>
       </TabsList>
 
       <TabsContent value="overview" className="mt-4">
-        <OverviewTab patient={patient} />
+        <OverviewTab patient={patient} patientId={patientId as Id<"patients">} />
       </TabsContent>
 
       <TabsContent value="insurance" className="mt-4">
@@ -917,11 +1036,11 @@ export function PatientTabs({ patientId, patient }: PatientTabsProps) {
       </TabsContent>
 
       <TabsContent value="appointments" className="mt-4">
-        <AppointmentsTab patient={patient} />
+        <AppointmentsTab patient={patient} patientId={patientId as Id<"patients">} />
       </TabsContent>
 
       <TabsContent value="claims" className="mt-4">
-        <ClaimsTab patient={patient} />
+        <ClaimsTab patient={patient} patientId={patientId as Id<"patients">} />
       </TabsContent>
 
       <TabsContent value="payments" className="mt-4">
@@ -930,6 +1049,266 @@ export function PatientTabs({ patientId, patient }: PatientTabsProps) {
 
       <TabsContent value="communications" className="mt-4">
         <CommunicationsTab patient={patient} />
+      </TabsContent>
+
+      <TabsContent value="alerts" className="mt-4">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <div>
+              <CardTitle>Patient Alerts</CardTitle>
+              <CardDescription>Alerts synced to PMS via NexHealth</CardDescription>
+            </div>
+            <Button size="sm" onClick={() => setAlertDialogOpen(true)}>
+              <Plus className="mr-1.5 size-4" />
+              New Alert
+            </Button>
+          </CardHeader>
+          <CardContent>
+            {!alerts || alerts.length === 0 ? (
+              <EmptyState
+                icon={Bell}
+                title="No alerts"
+                description="Create an alert to flag important patient information."
+              />
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Message</TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {alerts.map((alert: any) => (
+                    <TableRow key={alert._id}>
+                      <TableCell className="max-w-xs truncate">{alert.message}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline">{alert.alertType || "general"}</Badge>
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {formatDate(new Date(alert.createdAt).toISOString())}
+                      </TableCell>
+                      <TableCell>
+                        <Badge className={cn(
+                          alert.isActive
+                            ? "bg-emerald-100 text-emerald-800 border-emerald-200"
+                            : "bg-gray-100 text-gray-600 border-gray-200"
+                        )}>
+                          {alert.isActive ? "Active" : "Inactive"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {alert.isActive && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-red-600 hover:text-red-700"
+                            onClick={async () => {
+                              try {
+                                await deactivateAlert({ alertId: alert._id })
+                                toast.success("Alert deactivated")
+                              } catch {
+                                toast.error("Failed to deactivate alert")
+                              }
+                            }}
+                          >
+                            Deactivate
+                          </Button>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
+
+        <Dialog open={alertDialogOpen} onOpenChange={setAlertDialogOpen}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>New Patient Alert</DialogTitle>
+              <DialogDescription>Create an alert that will sync to the PMS.</DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="space-y-2">
+                <Label>Alert Type</Label>
+                <Select value={newAlertType} onValueChange={setNewAlertType}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="general">General</SelectItem>
+                    <SelectItem value="medical">Medical</SelectItem>
+                    <SelectItem value="allergy">Allergy</SelectItem>
+                    <SelectItem value="billing">Billing</SelectItem>
+                    <SelectItem value="scheduling">Scheduling</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Message</Label>
+                <Textarea
+                  value={newAlertMessage}
+                  onChange={(e) => setNewAlertMessage(e.target.value)}
+                  placeholder="Enter alert message..."
+                  rows={3}
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setAlertDialogOpen(false)}>Cancel</Button>
+              <Button
+                disabled={!newAlertMessage.trim()}
+                onClick={async () => {
+                  try {
+                    await createAlert({
+                      patientId: patientId as any,
+                      message: newAlertMessage.trim(),
+                      alertType: newAlertType,
+                    })
+                    toast.success("Alert created and syncing to PMS")
+                    setNewAlertMessage("")
+                    setNewAlertType("general")
+                    setAlertDialogOpen(false)
+                  } catch {
+                    toast.error("Failed to create alert")
+                  }
+                }}
+              >
+                Create Alert
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </TabsContent>
+
+      <TabsContent value="documents" className="mt-4">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <div>
+              <CardTitle>Patient Documents</CardTitle>
+              <CardDescription>Document records synced to PMS via NexHealth</CardDescription>
+            </div>
+            <Button size="sm" onClick={() => setDocDialogOpen(true)}>
+              <Plus className="mr-1.5 size-4" />
+              Add Document
+            </Button>
+          </CardHeader>
+          <CardContent>
+            {!documents || documents.length === 0 ? (
+              <EmptyState
+                icon={FileTextIcon}
+                title="No documents"
+                description="Add a document record for this patient."
+              />
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Link</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {documents.map((doc: any) => (
+                    <TableRow key={doc._id}>
+                      <TableCell className="font-medium">{doc.name}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline">{doc.documentType || "other"}</Badge>
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {formatDate(new Date(doc.createdAt).toISOString())}
+                      </TableCell>
+                      <TableCell>
+                        {doc.url ? (
+                          <a href={doc.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline text-sm">
+                            View
+                          </a>
+                        ) : (
+                          <span className="text-muted-foreground text-sm">—</span>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
+
+        <Dialog open={docDialogOpen} onOpenChange={setDocDialogOpen}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Add Document</DialogTitle>
+              <DialogDescription>Add a document record that will sync to the PMS. No file upload — metadata only.</DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="space-y-2">
+                <Label>Document Name</Label>
+                <Input
+                  value={newDocName}
+                  onChange={(e) => setNewDocName(e.target.value)}
+                  placeholder="e.g. Panoramic X-ray 2026-01"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Document Type</Label>
+                <Select value={newDocType} onValueChange={setNewDocType}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="other">Other</SelectItem>
+                    <SelectItem value="xray">X-Ray</SelectItem>
+                    <SelectItem value="lab_result">Lab Result</SelectItem>
+                    <SelectItem value="consent">Consent Form</SelectItem>
+                    <SelectItem value="referral">Referral</SelectItem>
+                    <SelectItem value="insurance">Insurance Document</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>URL (optional)</Label>
+                <Input
+                  value={newDocUrl}
+                  onChange={(e) => setNewDocUrl(e.target.value)}
+                  placeholder="https://..."
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setDocDialogOpen(false)}>Cancel</Button>
+              <Button
+                disabled={!newDocName.trim()}
+                onClick={async () => {
+                  try {
+                    await createDocument({
+                      patientId: patientId as any,
+                      name: newDocName.trim(),
+                      documentType: newDocType,
+                      url: newDocUrl.trim() || undefined,
+                    })
+                    toast.success("Document added and syncing to PMS")
+                    setNewDocName("")
+                    setNewDocType("other")
+                    setNewDocUrl("")
+                    setDocDialogOpen(false)
+                  } catch {
+                    toast.error("Failed to add document")
+                  }
+                }}
+              >
+                Add Document
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </TabsContent>
     </Tabs>
   )

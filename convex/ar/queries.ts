@@ -212,8 +212,8 @@ export const getPrioritizedWorklist = query({
     const patientIds = [...new Set(openClaims.map((c: any) => c.patientId))];
     const patients: Record<string, { firstName: string; lastName: string }> = {};
     for (const pid of patientIds) {
-      const patient = await ctx.db.get(pid);
-      if (patient) {
+      const patient = await ctx.db.get(pid) as any;
+      if (patient && patient.firstName) {
         patients[pid] = {
           firstName: patient.firstName,
           lastName: patient.lastName,

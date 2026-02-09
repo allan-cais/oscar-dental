@@ -65,6 +65,10 @@ export type Action =
   // AI actions
   | "ai_actions:read"
   | "ai_actions:approve"
+  // Chat
+  | "chat:read"
+  | "chat:send"
+  | "chat:execute_action"
   // Audit & compliance
   | "audit_logs:read"
   | "health_checks:read"
@@ -127,6 +131,9 @@ const ROLE_PERMISSIONS: Record<Role, Set<Action>> = {
     "consents:manage",
     "ai_actions:read",
     "ai_actions:approve",
+    "chat:read",
+    "chat:send",
+    "chat:execute_action",
     "audit_logs:read",
     "health_checks:read",
     "sync_jobs:manage",
@@ -179,6 +186,9 @@ const ROLE_PERMISSIONS: Record<Role, Set<Action>> = {
     "consents:manage",
     "ai_actions:read",
     "ai_actions:approve",
+    "chat:read",
+    "chat:send",
+    "chat:execute_action",
     "health_checks:read",
     "sync_jobs:manage",
   ]),
@@ -211,6 +221,8 @@ const ROLE_PERMISSIONS: Record<Role, Set<Action>> = {
     "notifications:read",
     "ai_actions:read",
     "ai_actions:approve",
+    "chat:read",
+    "chat:send",
   ]),
 
   clinical: new Set<Action>([
@@ -234,6 +246,8 @@ const ROLE_PERMISSIONS: Record<Role, Set<Action>> = {
     "tasks:update",
     "notifications:read",
     "ai_actions:read",
+    "chat:read",
+    "chat:send",
   ]),
 
   front_desk: new Set<Action>([
@@ -259,6 +273,8 @@ const ROLE_PERMISSIONS: Record<Role, Set<Action>> = {
     "tasks:update",
     "notifications:read",
     "consents:manage",
+    "chat:read",
+    "chat:send",
   ]),
 
   provider: new Set<Action>([
@@ -280,6 +296,8 @@ const ROLE_PERMISSIONS: Record<Role, Set<Action>> = {
     "tasks:update",
     "notifications:read",
     "ai_actions:read",
+    "chat:read",
+    "chat:send",
   ]),
 };
 

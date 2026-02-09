@@ -1,6 +1,8 @@
 "use client"
 
 import { useState } from "react"
+import { useQuery } from "convex/react"
+import { api } from "../../../../convex/_generated/api"
 import {
   Card,
   CardContent,
@@ -32,7 +34,7 @@ import {
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
-type ServiceStatus = "healthy" | "degraded" | "down"
+type ServiceStatus = "healthy" | "degraded" | "down" | "not_configured"
 type AlertSeverity = "info" | "warning" | "critical"
 
 interface IntegrationService {
@@ -54,123 +56,15 @@ interface Alert {
   duration: string
 }
 
-const SERVICES: IntegrationService[] = [
-  {
-    name: "PMS Sync",
-    icon: <Database className="size-5" />,
-    status: "healthy",
-    responseTime: "120ms",
-    lastChecked: "2 min ago",
-    uptime: "99.97%",
-  },
-  {
-    name: "Clearinghouse (Vyne)",
-    icon: <FileText className="size-5" />,
-    status: "healthy",
-    responseTime: "230ms",
-    lastChecked: "1 min ago",
-    uptime: "99.94%",
-  },
-  {
-    name: "Payments (Stripe)",
-    icon: <CreditCard className="size-5" />,
-    status: "healthy",
-    responseTime: "89ms",
-    lastChecked: "3 min ago",
-    uptime: "99.99%",
-  },
-  {
-    name: "SMS (Twilio)",
-    icon: <MessageSquare className="size-5" />,
-    status: "degraded",
-    responseTime: "450ms",
-    lastChecked: "1 min ago",
-    uptime: "99.82%",
-    message: "Elevated latency",
-  },
-  {
-    name: "Reviews (Google)",
-    icon: <Star className="size-5" />,
-    status: "healthy",
-    responseTime: "180ms",
-    lastChecked: "4 min ago",
-    uptime: "99.91%",
-  },
-  {
-    name: "AI (OpenAI)",
-    icon: <Brain className="size-5" />,
-    status: "healthy",
-    responseTime: "340ms",
-    lastChecked: "2 min ago",
-    uptime: "99.88%",
-  },
-]
-
-const ALERTS: Alert[] = [
-  {
-    id: "a1",
-    time: "2 min ago",
-    service: "Twilio",
-    severity: "warning",
-    message: "Response time exceeded 400ms threshold",
-    duration: "Ongoing",
-  },
-  {
-    id: "a2",
-    time: "18 min ago",
-    service: "PMS Sync",
-    severity: "info",
-    message: "Batch sync completed: 1,247 records processed",
-    duration: "2m 34s",
-  },
-  {
-    id: "a3",
-    time: "42 min ago",
-    service: "Stripe",
-    severity: "info",
-    message: "Webhook endpoint verified successfully",
-    duration: "—",
-  },
-  {
-    id: "a4",
-    time: "1 hr ago",
-    service: "OpenAI",
-    severity: "info",
-    message: "Model fallback: gpt-4o-mini used for 3 requests (rate limit)",
-    duration: "45s",
-  },
-  {
-    id: "a5",
-    time: "3 hrs ago",
-    service: "Vyne",
-    severity: "info",
-    message: "Claim batch #4821 submitted: 34 claims",
-    duration: "—",
-  },
-  {
-    id: "a6",
-    time: "5 hrs ago",
-    service: "Google",
-    severity: "info",
-    message: "Review monitoring cycle completed: 2 new reviews detected",
-    duration: "12s",
-  },
-  {
-    id: "a7",
-    time: "Yesterday, 11:42 PM",
-    service: "PMS Sync",
-    severity: "critical",
-    message: "Connection timeout to OpenDental API — auto-recovered after retry",
-    duration: "1m 12s (Resolved)",
-  },
-  {
-    id: "a8",
-    time: "Yesterday, 6:00 AM",
-    service: "PMS Sync",
-    severity: "info",
-    message: "Scheduled eligibility batch completed: 892 patients verified",
-    duration: "4m 08s",
-  },
+// Default service definitions (icons and names)
+const SERVICE_DEFINITIONS: { name: string; icon: React.ReactNode; key: string }[] = [
+  { name: "PMS Sync", icon: <Database className="size-5" />, key: "pms_sync" },
+  { name: "Clearinghouse (Vyne)", icon: <FileText className="size-5" />, key: "clearinghouse" },
+  { name: "Payments (Stripe)", icon: <CreditCard className="size-5" />, key: "payments" },
+  { name: "SMS (Twilio)", icon: <MessageSquare className="size-5" />, key: "sms" },
+  { name: "Reviews (Google)", icon: <Star className="size-5" />, key: "reviews" },
+  { name: "AI (OpenAI)", icon: <Brain className="size-5" />, key: "ai" },
+  { name: "NexHealth Sync", icon: <Database className="size-5" />, key: "nexhealth" },
 ]
 
 function statusColor(status: ServiceStatus) {
@@ -181,10 +75,12 @@ function statusColor(status: ServiceStatus) {
       return "bg-yellow-500"
     case "down":
       return "bg-red-500"
+    case "not_configured":
+      return "bg-gray-400"
   }
 }
 
-function statusBadge(status: ServiceStatus) {
+function statusBadgeElement(status: ServiceStatus) {
   switch (status) {
     case "healthy":
       return (
@@ -202,6 +98,12 @@ function statusBadge(status: ServiceStatus) {
       return (
         <Badge className="bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400">
           Down
+        </Badge>
+      )
+    case "not_configured":
+      return (
+        <Badge className="bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400">
+          Not Configured
         </Badge>
       )
   }
@@ -231,7 +133,7 @@ function severityBadge(severity: AlertSeverity) {
 }
 
 function ProgressBar({ label, used, total, unit }: { label: string; used: number; total: number; unit: string }) {
-  const pct = Math.round((used / total) * 100)
+  const pct = total > 0 ? Math.round((used / total) * 100) : 0
   const barColor = pct >= 80 ? "bg-red-500" : pct >= 60 ? "bg-yellow-500" : "bg-emerald-500"
 
   return (
@@ -256,28 +158,124 @@ function ProgressBar({ label, used, total, unit }: { label: string; used: number
 export default function HealthPage() {
   const [refreshing, setRefreshing] = useState(false)
 
-  const hasDegraded = SERVICES.some((s) => s.status === "degraded")
-  const hasDown = SERVICES.some((s) => s.status === "down")
+  // Load health status from Convex — actual query names from convex/health/queries.ts
+  const systemHealth = useQuery((api as any).health.queries.getSystemHealth, {})
+  const integrationHealth = useQuery((api as any).health.queries.getIntegrationHealth, {})
+  const tokenUtilization = useQuery((api as any).health.queries.getTokenUtilization, {})
 
-  const overallStatus = hasDown
-    ? "System Outage Detected"
-    : hasDegraded
-      ? "Partial Degradation"
-      : "All Systems Operational"
+  // Loading state
+  if (systemHealth === undefined) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">System Health</h1>
+            <p className="text-muted-foreground">Platform health monitoring and integration status.</p>
+          </div>
+        </div>
+        <div className="h-20 bg-muted animate-pulse rounded-lg" />
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {[1, 2, 3, 4, 5, 6, 7].map((i) => (
+            <div key={i} className="h-32 bg-muted animate-pulse rounded-lg" />
+          ))}
+        </div>
+        <div className="h-40 bg-muted animate-pulse rounded-lg" />
+        <div className="h-60 bg-muted animate-pulse rounded-lg" />
+      </div>
+    )
+  }
 
-  const overallDot = hasDown
-    ? "bg-red-500"
-    : hasDegraded
-      ? "bg-yellow-500"
-      : "bg-emerald-500"
+  // Build services list from Convex integrationHealth data
+  // integrationHealth returns: Array<{ target, status, lastChecked, responseTimeMs, errorCount, message }>
+  const integrations = Array.isArray(integrationHealth) ? integrationHealth : []
+  const services: IntegrationService[] = SERVICE_DEFINITIONS.map((def) => {
+    // Map SERVICE_DEFINITIONS key to integrationHealth target
+    const keyToTarget: Record<string, string> = {
+      pms_sync: "pms_sync",
+      clearinghouse: "clearinghouse",
+      payments: "stripe",
+      sms: "twilio",
+      reviews: "google_business",
+      ai: "openai",
+      nexhealth: "nexhealth",
+    }
+    const target = keyToTarget[def.key] ?? def.key
+    const serviceData = integrations.find((s: any) => s.target === target)
 
-  const overallIcon = hasDown ? (
-    <XCircle className="size-6 text-red-500" />
-  ) : hasDegraded ? (
-    <AlertTriangle className="size-6 text-yellow-500" />
-  ) : (
-    <CheckCircle2 className="size-6 text-emerald-500" />
-  )
+    if (serviceData) {
+      return {
+        name: def.name,
+        icon: def.icon,
+        status: (serviceData.status === "unknown" ? "not_configured" : serviceData.status) as ServiceStatus,
+        responseTime: serviceData.responseTimeMs ? `${serviceData.responseTimeMs}ms` : "--",
+        lastChecked: serviceData.lastChecked
+          ? new Date(serviceData.lastChecked).toLocaleString()
+          : "--",
+        uptime: "--",
+        message: serviceData.message ?? undefined,
+      }
+    }
+
+    return {
+      name: def.name,
+      icon: def.icon,
+      status: "not_configured" as ServiceStatus,
+      responseTime: "--",
+      lastChecked: "--",
+      uptime: "--",
+      message: "Integration not yet configured",
+    }
+  })
+
+  // Build alerts from integration health — flag services with errors as alerts
+  const alerts: Alert[] = integrations
+    .filter((s: any) => s.errorCount > 0 || s.status === "down" || s.status === "degraded")
+    .map((s: any, idx: number) => ({
+      id: `alert-${idx}`,
+      time: s.lastChecked ? new Date(s.lastChecked).toLocaleString() : "--",
+      service: s.target,
+      severity: (s.status === "down" ? "critical" : s.status === "degraded" ? "warning" : "info") as AlertSeverity,
+      message: s.message ?? `${s.errorCount} error(s) in the last hour`,
+      duration: "--",
+    }))
+
+  const hasDegraded = services.some((s) => s.status === "degraded")
+  const hasDown = services.some((s) => s.status === "down")
+  const allNotConfigured = services.every((s) => s.status === "not_configured")
+
+  function getOverallStatus() {
+    if (hasDown) return "System Outage Detected";
+    if (hasDegraded) return "Partial Degradation";
+    if (allNotConfigured) return "Awaiting Configuration";
+    return "All Systems Operational";
+  }
+
+  function getOverallDot() {
+    if (hasDown) return "bg-red-500";
+    if (hasDegraded) return "bg-yellow-500";
+    if (allNotConfigured) return "bg-gray-400";
+    return "bg-emerald-500";
+  }
+
+  function getOverallIcon() {
+    if (hasDown) return <XCircle className="size-6 text-red-500" />;
+    if (hasDegraded) return <AlertTriangle className="size-6 text-yellow-500" />;
+    if (allNotConfigured) return <AlertTriangle className="size-6 text-gray-400" />;
+    return <CheckCircle2 className="size-6 text-emerald-500" />;
+  }
+
+  const overallStatus = getOverallStatus()
+  const overallDot = getOverallDot()
+  const overallIcon = getOverallIcon()
+
+  // Token utilization from dedicated query
+  const tokenData = tokenUtilization as any
+  const openaiUsed = tokenData?.openAi?.estimatedTokensUsed ?? 0
+  const openaiTotal = 1000000
+  const twilioUsed = tokenData?.twilio?.messagesSent ?? 0
+  const twilioTotal = 5000
+  const stripeUsed = tokenData?.stripe?.apiCalls ?? 0
+  const stripeTotal = 10000
 
   function handleRefresh() {
     setRefreshing(true)
@@ -308,7 +306,11 @@ export default function HealthPage() {
               <span className={`inline-block size-3 rounded-full ${overallDot}`} />
               <h2 className="text-lg font-semibold">{overallStatus}</h2>
             </div>
-            <p className="text-sm text-muted-foreground">Last checked: 2 minutes ago</p>
+            <p className="text-sm text-muted-foreground">
+              {(systemHealth as any)?.lastChecked
+                ? `Last checked: ${new Date((systemHealth as any).lastChecked).toLocaleString()}`
+                : "Health data loaded from backend"}
+            </p>
           </div>
         </CardContent>
       </Card>
@@ -317,7 +319,7 @@ export default function HealthPage() {
       <div>
         <h2 className="mb-3 text-lg font-semibold">Integration Status</h2>
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {SERVICES.map((service) => (
+          {services.map((service) => (
             <Card key={service.name}>
               <CardContent className="pt-6">
                 <div className="flex items-start justify-between">
@@ -332,7 +334,7 @@ export default function HealthPage() {
                       </p>
                     </div>
                   </div>
-                  {statusBadge(service.status)}
+                  {statusBadgeElement(service.status)}
                 </div>
                 <div className="mt-4 flex items-center gap-4 text-sm">
                   <div>
@@ -365,9 +367,9 @@ export default function HealthPage() {
           <CardDescription>Monthly consumption across integrated services</CardDescription>
         </CardHeader>
         <CardContent className="space-y-5">
-          <ProgressBar label="OpenAI" used={67234} total={100000} unit="tokens" />
-          <ProgressBar label="Twilio" used={1234} total={5000} unit="messages" />
-          <ProgressBar label="Stripe" used={456} total={2000} unit="API calls" />
+          <ProgressBar label="OpenAI" used={openaiUsed} total={openaiTotal} unit="tokens" />
+          <ProgressBar label="Twilio" used={twilioUsed} total={twilioTotal} unit="messages" />
+          <ProgressBar label="Stripe" used={stripeUsed} total={stripeTotal} unit="API calls" />
         </CardContent>
       </Card>
 
@@ -378,36 +380,42 @@ export default function HealthPage() {
           <CardDescription>System events and service notifications</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="rounded-md border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Time</TableHead>
-                  <TableHead>Service</TableHead>
-                  <TableHead>Severity</TableHead>
-                  <TableHead>Message</TableHead>
-                  <TableHead>Duration</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {ALERTS.map((alert) => (
-                  <TableRow key={alert.id}>
-                    <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
-                      {alert.time}
-                    </TableCell>
-                    <TableCell className="font-medium">{alert.service}</TableCell>
-                    <TableCell>{severityBadge(alert.severity)}</TableCell>
-                    <TableCell className="max-w-xs truncate text-sm">
-                      {alert.message}
-                    </TableCell>
-                    <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
-                      {alert.duration}
-                    </TableCell>
+          {alerts.length === 0 ? (
+            <p className="py-8 text-center text-sm text-muted-foreground">
+              No recent alerts. System events will appear here once integrations are configured.
+            </p>
+          ) : (
+            <div className="rounded-md border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Time</TableHead>
+                    <TableHead>Service</TableHead>
+                    <TableHead>Severity</TableHead>
+                    <TableHead>Message</TableHead>
+                    <TableHead>Duration</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
+                </TableHeader>
+                <TableBody>
+                  {alerts.map((alert) => (
+                    <TableRow key={alert.id}>
+                      <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
+                        {alert.time}
+                      </TableCell>
+                      <TableCell className="font-medium">{alert.service}</TableCell>
+                      <TableCell>{severityBadge(alert.severity)}</TableCell>
+                      <TableCell className="max-w-xs truncate text-sm">
+                        {alert.message}
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
+                        {alert.duration}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

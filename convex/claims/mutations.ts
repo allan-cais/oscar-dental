@@ -279,7 +279,7 @@ export const scrub = mutation({
     );
     const schedule = payerSchedule || defaultSchedule;
 
-    if (schedule && claim.procedures) {
+    if (schedule && schedule.fees && claim.procedures) {
       const feeMap = new Map<string, number>();
       for (const entry of schedule.fees) {
         feeMap.set(entry.code, entry.fee);

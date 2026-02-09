@@ -127,6 +127,7 @@ export default defineSchema({
     ),
     specialty: v.optional(v.string()),
     color: v.optional(v.string()), // for calendar display
+    pmsProviderId: v.optional(v.string()),
     isActive: v.boolean(),
     createdAt: v.number(),
     updatedAt: v.number(),
@@ -139,6 +140,7 @@ export default defineSchema({
     practiceId: v.id("practices"),
     name: v.string(),
     shortName: v.optional(v.string()),
+    pmsOperatoryId: v.optional(v.string()),
     isActive: v.boolean(),
     createdAt: v.number(),
     updatedAt: v.number(),
@@ -148,28 +150,33 @@ export default defineSchema({
 
   appointmentTypes: defineTable({
     orgId: v.string(),
+    practiceId: v.optional(v.id("practices")),
+    pmsAppointmentTypeId: v.optional(v.string()),
     name: v.string(),
     code: v.optional(v.string()), // CDT code
     duration: v.number(), // minutes
     color: v.optional(v.string()),
-    category: v.union(
-      v.literal("hygiene"),
-      v.literal("restorative"),
-      v.literal("surgical"),
-      v.literal("diagnostic"),
-      v.literal("preventive"),
-      v.literal("endodontic"),
-      v.literal("prosthodontic"),
-      v.literal("orthodontic"),
-      v.literal("emergency"),
-      v.literal("other")
+    category: v.optional(
+      v.union(
+        v.literal("hygiene"),
+        v.literal("restorative"),
+        v.literal("surgical"),
+        v.literal("diagnostic"),
+        v.literal("preventive"),
+        v.literal("endodontic"),
+        v.literal("prosthodontic"),
+        v.literal("orthodontic"),
+        v.literal("emergency"),
+        v.literal("other")
+      )
     ),
     productionValue: v.optional(v.number()),
     isActive: v.boolean(),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
-    .index("by_org", ["orgId"]),
+    .index("by_org", ["orgId"])
+    .index("by_practice", ["orgId", "practiceId"]),
 
   // --------------------------------------------------------------------------
   // PATIENTS
@@ -555,16 +562,20 @@ export default defineSchema({
   feeSchedules: defineTable({
     orgId: v.string(),
     practiceId: v.id("practices"),
+    pmsFeeScheduleId: v.optional(v.string()),
+    description: v.optional(v.string()),
     payerId: v.optional(v.string()),
     payerName: v.optional(v.string()),
     name: v.string(),
-    fees: v.array(
-      v.object({
-        code: v.string(),
-        description: v.string(),
-        fee: v.number(),
-        effectiveDate: v.optional(v.string()),
-      })
+    fees: v.optional(
+      v.array(
+        v.object({
+          code: v.string(),
+          description: v.string(),
+          fee: v.number(),
+          effectiveDate: v.optional(v.string()),
+        })
+      )
     ),
     isDefault: v.boolean(),
     isActive: v.boolean(),
@@ -1111,6 +1122,83 @@ export default defineSchema({
     .index("by_resource", ["orgId", "resourceType", "resourceId"]),
 
   // --------------------------------------------------------------------------
+  // CHAT (Agentic Chat Panel)
+  // --------------------------------------------------------------------------
+  chatConversations: defineTable({
+    orgId: v.string(),
+    userId: v.string(),
+    title: v.optional(v.string()),
+    status: v.union(
+      v.literal("active"),
+      v.literal("archived")
+    ),
+    contextPage: v.optional(v.string()),
+    contextEntityType: v.optional(v.string()),
+    contextEntityId: v.optional(v.string()),
+    contextSummary: v.optional(v.string()),
+    personaMode: v.union(
+      v.literal("read_only"),
+      v.literal("read_action"),
+      v.literal("full")
+    ),
+    lastMessageAt: v.number(),
+    messageCount: v.number(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_org", ["orgId"])
+    .index("by_user", ["orgId", "userId"])
+    .index("by_user_status", ["orgId", "userId", "status"]),
+
+  chatMessages: defineTable({
+    orgId: v.string(),
+    conversationId: v.id("chatConversations"),
+    role: v.union(
+      v.literal("user"),
+      v.literal("assistant"),
+      v.literal("system"),
+      v.literal("tool_call"),
+      v.literal("tool_result")
+    ),
+    content: v.string(),
+    toolName: v.optional(v.string()),
+    toolArgs: v.optional(v.string()),
+    toolResult: v.optional(v.string()),
+    toolStatus: v.optional(v.string()),
+    containsPhi: v.optional(v.boolean()),
+    phiCategories: v.optional(v.array(v.string())),
+    tokensUsed: v.optional(v.number()),
+    createdAt: v.number(),
+  })
+    .index("by_org", ["orgId"])
+    .index("by_conversation", ["conversationId"])
+    .index("by_conversation_time", ["conversationId", "createdAt"]),
+
+  // Inter-agent messages for Oscar Consult Team
+  agentMessages: defineTable({
+    orgId: v.string(),
+    teamId: v.string(),
+    fromAgent: v.string(),
+    toAgent: v.string(),
+    messageType: v.union(
+      v.literal("message"),
+      v.literal("broadcast"),
+      v.literal("escalate")
+    ),
+    content: v.string(),
+    metadata: v.optional(v.string()),
+    status: v.union(
+      v.literal("sent"),
+      v.literal("delivered"),
+      v.literal("read")
+    ),
+    createdAt: v.number(),
+  })
+    .index("by_team", ["teamId"])
+    .index("by_recipient", ["teamId", "toAgent", "status"])
+    .index("by_sender", ["teamId", "fromAgent"]),
+
+  // --------------------------------------------------------------------------
   // AUDIT LOGGING
   // --------------------------------------------------------------------------
   auditLogs: defineTable({
@@ -1132,6 +1220,297 @@ export default defineSchema({
     .index("by_user", ["orgId", "userId"])
     .index("by_resource", ["orgId", "resourceType", "resourceId"])
     .index("by_action", ["orgId", "action"]),
+
+  // --------------------------------------------------------------------------
+  // NEXHEALTH CONFIGURATION
+  // --------------------------------------------------------------------------
+  nexhealthConfigs: defineTable({
+    orgId: v.string(),
+    practiceId: v.id("practices"),
+    apiKey: v.string(),
+    subdomain: v.string(),
+    locationId: v.string(),
+    environment: v.union(v.literal("sandbox"), v.literal("production")),
+    webhookEndpointId: v.optional(v.string()),
+    webhookSecret: v.optional(v.string()),
+    isActive: v.boolean(),
+    lastSyncAt: v.optional(v.number()),
+    connectionStatus: v.union(
+      v.literal("connected"),
+      v.literal("disconnected"),
+      v.literal("error")
+    ),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_org", ["orgId"])
+    .index("by_practice", ["orgId", "practiceId"])
+    .index("by_subdomain", ["subdomain"]),
+
+  webhookEvents: defineTable({
+    orgId: v.string(),
+    eventType: v.string(),
+    eventId: v.string(),
+    payload: v.string(),
+    processedAt: v.optional(v.number()),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("processed"),
+      v.literal("failed")
+    ),
+    error: v.optional(v.string()),
+    receivedAt: v.number(),
+  })
+    .index("by_org", ["orgId"])
+    .index("by_status", ["orgId", "status"])
+    .index("by_event_id", ["eventId"]),
+
+  // --------------------------------------------------------------------------
+  // PMS-SYNCED FINANCIAL & CLINICAL DATA (via NexHealth)
+  // --------------------------------------------------------------------------
+
+  // Dental procedures performed on patients (from NexHealth GET /procedures)
+  procedures: defineTable({
+    orgId: v.string(),
+    pmsProcedureId: v.optional(v.string()),
+    pmsPatientId: v.optional(v.string()),
+    pmsAppointmentId: v.optional(v.string()),
+    pmsProviderId: v.optional(v.string()),
+    code: v.string(),
+    description: v.optional(v.string()),
+    fee: v.optional(v.number()),
+    tooth: v.optional(v.string()),
+    surface: v.optional(v.string()),
+    status: v.optional(v.string()),
+    completedAt: v.optional(v.string()),
+    foreignId: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    lastSyncedAt: v.optional(v.number()),
+  })
+    .index("by_org", ["orgId"])
+    .index("by_pms_id", ["orgId", "pmsProcedureId"])
+    .index("by_patient", ["orgId", "pmsPatientId"]),
+
+  // Financial charges against patients (from NexHealth GET /charges)
+  charges: defineTable({
+    orgId: v.string(),
+    pmsChargeId: v.optional(v.string()),
+    pmsPatientId: v.optional(v.string()),
+    pmsProviderId: v.optional(v.string()),
+    amount: v.number(),
+    procedureCode: v.optional(v.string()),
+    description: v.optional(v.string()),
+    date: v.optional(v.string()),
+    status: v.optional(v.string()),
+    pmsClaimId: v.optional(v.string()),
+    foreignId: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    lastSyncedAt: v.optional(v.number()),
+  })
+    .index("by_org", ["orgId"])
+    .index("by_pms_id", ["orgId", "pmsChargeId"])
+    .index("by_patient", ["orgId", "pmsPatientId"]),
+
+  // PMS payment records (from NexHealth GET /payments)
+  // Distinct from Oscar's text-to-pay `payments` table
+  pmsPayments: defineTable({
+    orgId: v.string(),
+    pmsPaymentId: v.optional(v.string()),
+    pmsPatientId: v.optional(v.string()),
+    amount: v.number(),
+    paymentTypeId: v.optional(v.number()),
+    paymentMethod: v.optional(v.string()),
+    date: v.optional(v.string()),
+    note: v.optional(v.string()),
+    pmsClaimId: v.optional(v.string()),
+    foreignId: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    lastSyncedAt: v.optional(v.number()),
+  })
+    .index("by_org", ["orgId"])
+    .index("by_pms_id", ["orgId", "pmsPaymentId"])
+    .index("by_patient", ["orgId", "pmsPatientId"]),
+
+  // Financial adjustments — write-offs, discounts (from NexHealth GET /adjustments)
+  adjustments: defineTable({
+    orgId: v.string(),
+    pmsAdjustmentId: v.optional(v.string()),
+    pmsPatientId: v.optional(v.string()),
+    pmsProviderId: v.optional(v.string()),
+    amount: v.number(),
+    adjustmentTypeId: v.optional(v.number()),
+    description: v.optional(v.string()),
+    date: v.optional(v.string()),
+    foreignId: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    lastSyncedAt: v.optional(v.number()),
+  })
+    .index("by_org", ["orgId"])
+    .index("by_pms_id", ["orgId", "pmsAdjustmentId"])
+    .index("by_patient", ["orgId", "pmsPatientId"]),
+
+  // Patient outstanding balances (from NexHealth GET /guarantor-balances)
+  guarantorBalances: defineTable({
+    orgId: v.string(),
+    pmsGuarantorBalanceId: v.optional(v.string()),
+    pmsPatientId: v.optional(v.string()),
+    balance: v.number(),
+    lastPaymentDate: v.optional(v.string()),
+    lastPaymentAmount: v.optional(v.number()),
+    foreignId: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    lastSyncedAt: v.optional(v.number()),
+  })
+    .index("by_org", ["orgId"])
+    .index("by_pms_id", ["orgId", "pmsGuarantorBalanceId"])
+    .index("by_patient", ["orgId", "pmsPatientId"]),
+
+  // Insurance balance records (from NexHealth GET /insurance-balances)
+  insuranceBalances: defineTable({
+    orgId: v.string(),
+    pmsInsuranceBalanceId: v.optional(v.string()),
+    pmsPatientId: v.optional(v.string()),
+    insurancePlanId: v.optional(v.number()),
+    balance: v.number(),
+    foreignId: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    lastSyncedAt: v.optional(v.number()),
+  })
+    .index("by_org", ["orgId"])
+    .index("by_pms_id", ["orgId", "pmsInsuranceBalanceId"])
+    .index("by_patient", ["orgId", "pmsPatientId"]),
+
+  // Patient treatment plans with procedure lists (from NexHealth GET /treatment-plans)
+  treatmentPlans: defineTable({
+    orgId: v.string(),
+    pmsTreatmentPlanId: v.optional(v.string()),
+    pmsPatientId: v.optional(v.string()),
+    pmsProviderId: v.optional(v.string()),
+    name: v.optional(v.string()),
+    status: v.optional(v.string()),
+    totalFee: v.optional(v.number()),
+    procedures: v.optional(
+      v.array(
+        v.object({
+          code: v.string(),
+          description: v.optional(v.string()),
+          fee: v.optional(v.number()),
+          tooth: v.optional(v.string()),
+          surface: v.optional(v.string()),
+          status: v.optional(v.string()),
+        })
+      )
+    ),
+    foreignId: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    lastSyncedAt: v.optional(v.number()),
+  })
+    .index("by_org", ["orgId"])
+    .index("by_pms_id", ["orgId", "pmsTreatmentPlanId"])
+    .index("by_patient", ["orgId", "pmsPatientId"]),
+
+  // PMS insurance claims (from NexHealth GET /claims)
+  // Distinct from Oscar's scrubbing `claims` table
+  pmsClaims: defineTable({
+    orgId: v.string(),
+    pmsClaimId: v.optional(v.string()),
+    pmsPatientId: v.optional(v.string()),
+    insurancePlanId: v.optional(v.number()),
+    totalAmount: v.number(),
+    paidAmount: v.optional(v.number()),
+    status: v.optional(v.string()),
+    submittedDate: v.optional(v.string()),
+    foreignId: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    lastSyncedAt: v.optional(v.number()),
+  })
+    .index("by_org", ["orgId"])
+    .index("by_pms_id", ["orgId", "pmsClaimId"])
+    .index("by_patient", ["orgId", "pmsPatientId"])
+    .index("by_status", ["orgId", "status"]),
+
+  // Provider schedule availability (from NexHealth GET /working-hours)
+  workingHours: defineTable({
+    orgId: v.string(),
+    pmsWorkingHourId: v.optional(v.string()),
+    pmsProviderId: v.optional(v.string()),
+    dayOfWeek: v.number(), // 0=Sun, 6=Sat
+    startTime: v.string(), // HH:mm
+    endTime: v.string(), // HH:mm
+    locationId: v.optional(v.number()),
+    isActive: v.optional(v.boolean()),
+    foreignId: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    lastSyncedAt: v.optional(v.number()),
+  })
+    .index("by_org", ["orgId"])
+    .index("by_pms_id", ["orgId", "pmsWorkingHourId"])
+    .index("by_provider", ["orgId", "pmsProviderId"]),
+
+  // Insurance plan/payer reference data (from NexHealth GET /insurance-plans)
+  insurancePlans: defineTable({
+    orgId: v.string(),
+    pmsInsurancePlanId: v.optional(v.string()),
+    name: v.string(),
+    payerName: v.optional(v.string()),
+    payerId: v.optional(v.string()),
+    planType: v.optional(v.string()),
+    groupName: v.optional(v.string()),
+    groupNumber: v.optional(v.string()),
+    phone: v.optional(v.string()),
+    employerName: v.optional(v.string()),
+    foreignId: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    lastSyncedAt: v.optional(v.number()),
+  })
+    .index("by_org", ["orgId"])
+    .index("by_pms_id", ["orgId", "pmsInsurancePlanId"]),
+
+  // --------------------------------------------------------------------------
+  // PATIENT ALERTS (PMS-synced via NexHealth)
+  // --------------------------------------------------------------------------
+  patientAlerts: defineTable({
+    orgId: v.string(),
+    patientId: v.id("patients"),
+    pmsAlertId: v.optional(v.string()),
+    pmsPatientId: v.optional(v.string()),
+    message: v.string(),
+    alertType: v.optional(v.string()),
+    isActive: v.boolean(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_org", ["orgId"])
+    .index("by_patient", ["orgId", "patientId"])
+    .index("by_pms_id", ["orgId", "pmsAlertId"]),
+
+  // --------------------------------------------------------------------------
+  // PATIENT DOCUMENTS (PMS-synced via NexHealth)
+  // --------------------------------------------------------------------------
+  patientDocuments: defineTable({
+    orgId: v.string(),
+    patientId: v.id("patients"),
+    pmsDocumentId: v.optional(v.string()),
+    pmsPatientId: v.optional(v.string()),
+    name: v.string(),
+    documentType: v.optional(v.string()),
+    url: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_org", ["orgId"])
+    .index("by_patient", ["orgId", "patientId"])
+    .index("by_pms_id", ["orgId", "pmsDocumentId"]),
 
   // --------------------------------------------------------------------------
   // HEALTH & SYNC

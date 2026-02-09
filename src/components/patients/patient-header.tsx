@@ -1,5 +1,6 @@
 "use client"
 
+import { useState } from "react"
 import {
   Phone,
   Mail,
@@ -16,6 +17,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Separator } from "@/components/ui/separator"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { cn } from "@/lib/utils"
+import { ScheduleAppointmentDialog } from "@/components/patients/schedule-appointment-dialog"
 
 export interface PatientData {
   _id: string
@@ -144,6 +146,8 @@ interface PatientHeaderProps {
 }
 
 export function PatientHeader({ patient }: PatientHeaderProps) {
+  const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false)
+
   if (!patient) {
     return <PatientHeaderSkeleton />
   }
@@ -158,100 +162,109 @@ export function PatientHeader({ patient }: PatientHeaderProps) {
     : null
 
   return (
-    <div className="rounded-xl border bg-card p-6">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-        {/* Left: Patient info */}
-        <div className="flex items-start gap-4">
-          <Avatar className="size-16">
-            <AvatarFallback className="text-lg">{initials}</AvatarFallback>
-          </Avatar>
+    <>
+      <div className="rounded-xl border bg-card p-6">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          {/* Left: Patient info */}
+          <div className="flex items-start gap-4">
+            <Avatar className="size-16">
+              <AvatarFallback className="text-lg">{initials}</AvatarFallback>
+            </Avatar>
 
-          <div className="space-y-1.5">
-            {/* Name + age + gender */}
-            <div className="flex items-center gap-3">
-              <h1 className="text-2xl font-bold tracking-tight">
-                {patient.firstName} {patient.lastName}
-              </h1>
-              <span className="text-muted-foreground text-sm">
-                {age} years old
+            <div className="space-y-1.5">
+              {/* Name + age + gender */}
+              <div className="flex items-center gap-3">
+                <h1 className="text-2xl font-bold tracking-tight">
+                  {patient.firstName} {patient.lastName}
+                </h1>
+                <span className="text-muted-foreground text-sm">
+                  {age} years old
+                </span>
+                {patient.gender && (
+                  <Badge variant="secondary" className="capitalize">
+                    {patient.gender}
+                  </Badge>
+                )}
+              </div>
+
+              {/* Contact row */}
+              <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
+                {patient.phone && (
+                  <span className="flex items-center gap-1.5">
+                    <Phone className="size-3.5" />
+                    {patient.phone}
+                  </span>
+                )}
+                {patient.email && (
+                  <span className="flex items-center gap-1.5">
+                    <Mail className="size-3.5" />
+                    {patient.email}
+                  </span>
+                )}
+                {patient.address && (
+                  <span className="flex items-center gap-1.5">
+                    <MapPin className="size-3.5" />
+                    {patient.address.city}, {patient.address.state}
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Right: Match status + sync */}
+          <div className="flex flex-col items-start gap-2 lg:items-end">
+            <Badge
+              variant="outline"
+              className={cn("border-transparent", matchConfig.className)}
+            >
+              {matchConfig.label}
+            </Badge>
+
+            {syncInfo && (
+              <span
+                className={cn(
+                  "flex items-center gap-1.5 text-xs",
+                  syncInfo.isStale
+                    ? "text-yellow-600 dark:text-yellow-400"
+                    : "text-muted-foreground"
+                )}
+              >
+                {syncInfo.isStale ? (
+                  <AlertTriangle className="size-3" />
+                ) : (
+                  <RefreshCw className="size-3" />
+                )}
+                {syncInfo.isStale ? "Data may be stale" : syncInfo.text}
               </span>
-              {patient.gender && (
-                <Badge variant="secondary" className="capitalize">
-                  {patient.gender}
-                </Badge>
-              )}
-            </div>
-
-            {/* Contact row */}
-            <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
-              {patient.phone && (
-                <span className="flex items-center gap-1.5">
-                  <Phone className="size-3.5" />
-                  {patient.phone}
-                </span>
-              )}
-              {patient.email && (
-                <span className="flex items-center gap-1.5">
-                  <Mail className="size-3.5" />
-                  {patient.email}
-                </span>
-              )}
-              {patient.address && (
-                <span className="flex items-center gap-1.5">
-                  <MapPin className="size-3.5" />
-                  {patient.address.city}, {patient.address.state}
-                </span>
-              )}
-            </div>
+            )}
           </div>
         </div>
 
-        {/* Right: Match status + sync */}
-        <div className="flex flex-col items-start gap-2 lg:items-end">
-          <Badge
-            variant="outline"
-            className={cn("border-transparent", matchConfig.className)}
-          >
-            {matchConfig.label}
-          </Badge>
+        <Separator className="my-4" />
 
-          {syncInfo && (
-            <span
-              className={cn(
-                "flex items-center gap-1.5 text-xs",
-                syncInfo.isStale
-                  ? "text-yellow-600 dark:text-yellow-400"
-                  : "text-muted-foreground"
-              )}
-            >
-              {syncInfo.isStale ? (
-                <AlertTriangle className="size-3" />
-              ) : (
-                <RefreshCw className="size-3" />
-              )}
-              {syncInfo.isStale ? "Data may be stale" : syncInfo.text}
-            </span>
-          )}
+        {/* Quick actions */}
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" size="sm" onClick={() => setScheduleDialogOpen(true)}>
+            <Calendar className="size-4" />
+            Schedule Appointment
+          </Button>
+          <Button variant="outline" size="sm">
+            <Shield className="size-4" />
+            Verify Eligibility
+          </Button>
+          <Button variant="outline" size="sm">
+            <MessageSquare className="size-4" />
+            Send Message
+          </Button>
         </div>
       </div>
 
-      <Separator className="my-4" />
-
-      {/* Quick actions */}
-      <div className="flex flex-wrap gap-2">
-        <Button variant="outline" size="sm">
-          <Calendar className="size-4" />
-          Schedule Appointment
-        </Button>
-        <Button variant="outline" size="sm">
-          <Shield className="size-4" />
-          Verify Eligibility
-        </Button>
-        <Button variant="outline" size="sm">
-          <MessageSquare className="size-4" />
-          Send Message
-        </Button>
-      </div>
-    </div>
+      <ScheduleAppointmentDialog
+        open={scheduleDialogOpen}
+        onClose={() => setScheduleDialogOpen(false)}
+        patientId={patient._id}
+        patientName={`${patient.firstName} ${patient.lastName}`}
+      />
+    </>
   )
 }

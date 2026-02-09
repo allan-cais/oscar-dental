@@ -104,7 +104,7 @@ export const getDueList = query({
     // Join patient names
     const enriched = await Promise.all(
       results.slice(0, limit).map(async (item: any) => {
-        const patient = await ctx.db.get(item.patientId);
+        const patient = await ctx.db.get(item.patientId) as any;
         return {
           ...item,
           patientName: patient

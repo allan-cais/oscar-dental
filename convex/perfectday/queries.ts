@@ -7,7 +7,7 @@ import { getOrgId } from "../lib/auth";
  */
 export const getTemplates = query({
   args: {
-    practiceId: v.id("practices"),
+    practiceId: v.optional(v.id("practices")),
   },
   handler: async (ctx, args) => {
     const orgId = await getOrgId(ctx);
@@ -17,9 +17,10 @@ export const getTemplates = query({
       .withIndex("by_org", (q: any) => q.eq("orgId", orgId))
       .collect();
 
-    const practiceTemplates = templates.filter(
-      (t: any) => t.practiceId === args.practiceId
-    );
+    // Filter by practiceId if provided, otherwise return all org templates
+    const practiceTemplates = args.practiceId
+      ? templates.filter((t: any) => t.practiceId === args.practiceId)
+      : templates;
 
     // Sort by dayOfWeek ascending
     practiceTemplates.sort((a: any, b: any) => a.dayOfWeek - b.dayOfWeek);

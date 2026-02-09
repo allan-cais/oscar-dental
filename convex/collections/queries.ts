@@ -48,8 +48,26 @@ export const list = query({
 
     const page = results.slice(0, limit);
 
+    // Join patient data
+    const sequencesWithPatients = await Promise.all(
+      page.map(async (seq: any) => {
+        const patient = await ctx.db.get(seq.patientId) as any;
+        return {
+          ...seq,
+          patient: patient
+            ? {
+                firstName: patient.firstName,
+                lastName: patient.lastName,
+                phone: patient.phone,
+                email: patient.email,
+              }
+            : null,
+        };
+      })
+    );
+
     return {
-      sequences: page,
+      sequences: sequencesWithPatients,
       totalCount: results.length,
     };
   },

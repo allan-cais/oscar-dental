@@ -111,7 +111,7 @@ export function AppointmentDetailDialog({
           <div className="rounded-md border p-3 space-y-1">
             <div className="text-sm font-medium">{patientName}</div>
             <div className="text-xs text-muted-foreground">
-              DOB: {format(parseISO(patientDob), "MMM d, yyyy")}
+              DOB: {patientDob ? format(parseISO(patientDob), "MMM d, yyyy") : "N/A"}
             </div>
           </div>
 

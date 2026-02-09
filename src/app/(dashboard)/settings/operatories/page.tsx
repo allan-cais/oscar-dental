@@ -1,12 +1,16 @@
 "use client"
 
 import { useState, useMemo } from "react"
+import { useQuery } from "convex/react"
+import { api } from "../../../../../convex/_generated/api"
 import {
   Plus,
   Pencil,
   Search,
   DoorOpen,
 } from "lucide-react"
+import { Skeleton } from "@/components/ui/skeleton"
+import { DataEmptyState } from "@/components/ui/data-empty-state"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -44,77 +48,8 @@ import {
 import { cn } from "@/lib/utils"
 
 // ---------------------------------------------------------------------------
-// Types
+// (Types are inferred from Convex query results)
 // ---------------------------------------------------------------------------
-interface Operatory {
-  id: string
-  name: string
-  shortName: string
-  practice: string
-  isActive: boolean
-}
-
-// ---------------------------------------------------------------------------
-// Demo Data
-// ---------------------------------------------------------------------------
-const DEMO_OPERATORIES: Operatory[] = [
-  {
-    id: "op_1",
-    name: "Operatory 1 - Hygiene",
-    shortName: "OP1",
-    practice: "Canopy Dental - Austin",
-    isActive: true,
-  },
-  {
-    id: "op_2",
-    name: "Operatory 2 - Hygiene",
-    shortName: "OP2",
-    practice: "Canopy Dental - Austin",
-    isActive: true,
-  },
-  {
-    id: "op_3",
-    name: "Operatory 3 - Restorative",
-    shortName: "OP3",
-    practice: "Canopy Dental - Austin",
-    isActive: true,
-  },
-  {
-    id: "op_4",
-    name: "Operatory 4 - Restorative",
-    shortName: "OP4",
-    practice: "Canopy Dental - Austin",
-    isActive: true,
-  },
-  {
-    id: "op_5",
-    name: "Operatory 5 - Surgery",
-    shortName: "OP5",
-    practice: "Canopy Dental - Austin",
-    isActive: false,
-  },
-  {
-    id: "op_6",
-    name: "Operatory A - Hygiene",
-    shortName: "OPA",
-    practice: "Canopy Dental - Round Rock",
-    isActive: true,
-  },
-  {
-    id: "op_7",
-    name: "Operatory B - Restorative",
-    shortName: "OPB",
-    practice: "Canopy Dental - Round Rock",
-    isActive: true,
-  },
-  {
-    id: "op_8",
-    name: "Operatory C - Restorative",
-    shortName: "OPC",
-    practice: "Canopy Dental - Round Rock",
-    isActive: true,
-  },
-]
 
 // ---------------------------------------------------------------------------
 // Empty Form
@@ -223,30 +158,68 @@ function OperatoryDialog({
 // Main Page
 // ---------------------------------------------------------------------------
 export default function OperatoriesSettingsPage() {
-  const [operatories, setOperatories] = useState(DEMO_OPERATORIES)
+  const rawOperatories = useQuery(api.operatories.queries.list as any, {})
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingOp, setEditingOp] = useState<
     (typeof EMPTY_FORM & { id?: string }) | null
   >(null)
   const [search, setSearch] = useState("")
 
-  const filtered = useMemo(() => {
-    if (!search) return operatories
-    const q = search.toLowerCase()
-    return operatories.filter(
-      (op) =>
-        op.name.toLowerCase().includes(q) ||
-        op.shortName.toLowerCase().includes(q) ||
-        op.practice.toLowerCase().includes(q)
+  // Loading state
+  if (rawOperatories === undefined) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">Operatories</h1>
+            <p className="text-muted-foreground">Manage operatory rooms across your practices.</p>
+          </div>
+          <Skeleton className="h-10 w-36" />
+        </div>
+        <Card>
+          <CardHeader>
+            <Skeleton className="h-5 w-32" />
+            <Skeleton className="h-4 w-20" />
+          </CardHeader>
+          <CardContent>
+            <Skeleton className="h-10 w-64 mb-4" />
+            <div className="rounded-md border p-4 space-y-3">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <Skeleton key={i} className="h-12 w-full" />
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
     )
-  }, [operatories, search])
+  }
+
+  // Map Convex docs to local shape
+  const operatories = (rawOperatories as any[]).map((op: any) => ({
+    id: op._id ?? op.id,
+    name: op.name ?? "",
+    shortName: op.shortName ?? "",
+    practice: op.practice ?? "",
+    isActive: op.isActive ?? true,
+  }))
+
+  const filtered = search
+    ? operatories.filter((op) => {
+        const q = search.toLowerCase()
+        return (
+          op.name.toLowerCase().includes(q) ||
+          op.shortName.toLowerCase().includes(q) ||
+          op.practice.toLowerCase().includes(q)
+        )
+      })
+    : operatories
 
   function openAdd() {
     setEditingOp({ ...EMPTY_FORM })
     setDialogOpen(true)
   }
 
-  function openEdit(op: Operatory) {
+  function openEdit(op: (typeof operatories)[number]) {
     setEditingOp({
       id: op.id,
       name: op.name,
@@ -256,29 +229,12 @@ export default function OperatoriesSettingsPage() {
     setDialogOpen(true)
   }
 
-  function handleSave(data: typeof EMPTY_FORM & { id?: string }) {
-    if (data.id) {
-      setOperatories((prev) =>
-        prev.map((op) =>
-          op.id === data.id
-            ? { ...op, ...data, id: op.id, isActive: op.isActive }
-            : op
-        )
-      )
-    } else {
-      const newOp: Operatory = {
-        id: `op_${Date.now()}`,
-        ...data,
-        isActive: true,
-      }
-      setOperatories((prev) => [...prev, newOp])
-    }
+  function handleSave(_data: typeof EMPTY_FORM & { id?: string }) {
+    // TODO: Call Convex mutation to create/update operatory
   }
 
-  function toggleActive(id: string) {
-    setOperatories((prev) =>
-      prev.map((op) => (op.id === id ? { ...op, isActive: !op.isActive } : op))
-    )
+  function toggleActive(_id: string) {
+    // TODO: Call Convex mutation to toggle active status
   }
 
   return (
@@ -296,6 +252,9 @@ export default function OperatoriesSettingsPage() {
         </Button>
       </div>
 
+      {operatories.length === 0 && !search ? (
+        <DataEmptyState resource="operatories" />
+      ) : (
       <Card>
         <CardHeader>
           <CardTitle>All Operatories</CardTitle>
@@ -395,6 +354,7 @@ export default function OperatoriesSettingsPage() {
           </div>
         </CardContent>
       </Card>
+      )}
 
       {editingOp && (
         <OperatoryDialog

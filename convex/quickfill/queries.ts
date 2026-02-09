@@ -49,7 +49,7 @@ export const list = query({
     // Join patient names and compute priority scores
     const enriched = await Promise.all(
       results.map(async (item: any) => {
-        const patient = await ctx.db.get(item.patientId);
+        const patient = await ctx.db.get(item.patientId) as any;
         const urgencyScore = urgencyScores[item.urgency] ?? 1;
         const valueScore = item.productionValue
           ? Math.min(item.productionValue / 500, 3)
@@ -136,7 +136,7 @@ export const getSuggestedPatients = query({
     // Score each item
     const scored = await Promise.all(
       waitingItems.map(async (item: any) => {
-        const patient = await ctx.db.get(item.patientId);
+        const patient = await ctx.db.get(item.patientId) as any;
         const patientName = patient
           ? `${patient.firstName} ${patient.lastName}`
           : "Unknown";
@@ -145,7 +145,7 @@ export const getSuggestedPatients = query({
         let appointmentTypeName = "General";
         let procedureValue = 0;
         if (item.appointmentTypeId) {
-          const apptType = await ctx.db.get(item.appointmentTypeId);
+          const apptType = await ctx.db.get(item.appointmentTypeId) as any;
           if (apptType) {
             appointmentTypeName = apptType.name;
             procedureValue = apptType.productionValue ?? 0;
@@ -321,7 +321,7 @@ export const getGapFillToolbox = query({
         )
         .slice(0, 20)
         .map(async (item: any) => {
-          const patient = await ctx.db.get(item.patientId);
+          const patient = await ctx.db.get(item.patientId) as any;
           return {
             patientId: item.patientId,
             patientName: patient

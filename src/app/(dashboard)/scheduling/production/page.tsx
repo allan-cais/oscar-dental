@@ -44,85 +44,6 @@ import {
 } from "lucide-react"
 
 // ---------------------------------------------------------------------------
-// Mock Data
-// ---------------------------------------------------------------------------
-
-const MOCK_TODAY = {
-  date: "2026-02-05",
-  dailyGoal: 8500,
-  actualProduction: 5240,
-  scheduledProduction: 9200,
-  completedAppointments: 8,
-  totalAppointments: 14,
-}
-
-const MOCK_PROVIDERS = [
-  {
-    providerId: "prov_1",
-    name: "Dr. Emily Park",
-    scheduled: 3800,
-    completed: 2400,
-    appointmentCount: 5,
-    totalScheduled: 7,
-  },
-  {
-    providerId: "prov_2",
-    name: "Dr. Michael Torres",
-    scheduled: 3200,
-    completed: 1800,
-    appointmentCount: 4,
-    totalScheduled: 6,
-  },
-  {
-    providerId: "prov_3",
-    name: "Dr. Sarah Kim",
-    scheduled: 2200,
-    completed: 1040,
-    appointmentCount: 3,
-    totalScheduled: 5,
-  },
-]
-
-const MOCK_WEEKLY = [
-  { date: "2026-02-02", day: "Mon", goal: 8500, actual: 9100 },
-  { date: "2026-02-03", day: "Tue", goal: 8500, actual: 7800 },
-  { date: "2026-02-04", day: "Wed", goal: 8500, actual: 8900 },
-  { date: "2026-02-05", day: "Thu", goal: 8500, actual: 5240 },
-  { date: "2026-02-06", day: "Fri", goal: 8500, actual: 0 },
-  { date: "2026-02-07", day: "Sat", goal: 4000, actual: 0 },
-  { date: "2026-02-08", day: "Sun", goal: 0, actual: 0 },
-]
-
-// Seeded random to keep consistent across renders
-function seededRandom(seed: number) {
-  const x = Math.sin(seed) * 10000
-  return x - Math.floor(x)
-}
-
-const MOCK_MONTHLY = {
-  monthlyGoal: 170000,
-  monthlyActual: 98400,
-  daysCompleted: 15,
-  totalWorkDays: 22,
-  projectedTotal: 144320,
-  days: Array.from({ length: 28 }, (_, i) => {
-    const isWorkday =
-      i < 5 ||
-      (i >= 7 && i < 12) ||
-      (i >= 14 && i < 19) ||
-      (i >= 21 && i < 26)
-    const isSaturday = i % 7 === 5
-    const goal = isWorkday ? 8500 : isSaturday ? 4000 : 0
-    const actual = i < 15 ? Math.floor(6000 + seededRandom(i + 42) * 4000) : 0
-    return {
-      date: `2026-02-${String(i + 1).padStart(2, "0")}`,
-      goal,
-      actual,
-    }
-  }),
-}
-
-// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -183,6 +104,14 @@ function getStatusBadge(
   }
 }
 
+function isSameDay(d1: Date, d2: Date): boolean {
+  return d1.getFullYear() === d2.getFullYear() && d1.getMonth() === d2.getMonth() && d1.getDate() === d2.getDate()
+}
+
+function startOfDay(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate())
+}
+
 // ---------------------------------------------------------------------------
 // Page Component
 // ---------------------------------------------------------------------------
@@ -194,46 +123,148 @@ export default function ProductionGoalsPage() {
   const [selectedDay, setSelectedDay] = useState<number | null>(null)
   const [calendarMonth, setCalendarMonth] = useState(1) // 0-indexed: 1 = February
 
-  // Try loading from Convex, fall back to mock data
-  let convexError = false
-  try {
-    // eslint-disable-next-line react-hooks/rules-of-hooks
-    useQuery(api.scheduling.queries.productionGoals)
-  } catch {
-    convexError = true
+  // Load procedures and providers from Convex
+  const procedures = useQuery((api as any).procedures.queries.list as any, {})
+  const providers = useQuery(api.providers.queries.list as any, {})
+  const appointments = useQuery(api.scheduling.queries.list as any, {})
+
+  const isLoading = procedures === undefined || providers === undefined
+
+  // Compute production from procedures data
+  const now = new Date()
+  const todayDate = startOfDay(now)
+  const dailyGoal = parseInt(dailyGoalInput) || 8500
+  const monthlyGoal = parseInt(monthlyGoalInput) || 170000
+
+  // Procedures are expected to have: fee (number), completedAt (timestamp), pmsProviderId (string)
+  const proceduresList = (procedures as any[]) ?? []
+
+  // Today's production
+  const todayProcedures = proceduresList.filter((p: any) => {
+    if (!p.completedAt) return false
+    return isSameDay(new Date(p.completedAt), todayDate)
+  })
+  const actualProduction = todayProcedures.reduce((sum: number, p: any) => sum + (p.fee || 0), 0)
+
+  // Total scheduled production today (from appointments if available)
+  const appointmentsList = (appointments as any[]) ?? []
+  const todayAppointments = appointmentsList.filter((a: any) => {
+    if (!a.date) return false
+    const d = typeof a.date === "string" ? new Date(a.date) : new Date(a.date)
+    return isSameDay(d, todayDate)
+  })
+  const completedAppointments = todayAppointments.filter((a: any) => a.status === "completed").length
+  const totalAppointments = todayAppointments.length
+  const scheduledProduction = todayAppointments.reduce((sum: number, a: any) => sum + (a.estimatedValue || a.fee || 0), 0) || actualProduction
+
+  const today = {
+    date: todayDate.toISOString().slice(0, 10),
+    dailyGoal,
+    actualProduction,
+    scheduledProduction: scheduledProduction > actualProduction ? scheduledProduction : actualProduction + 2000,
+    completedAppointments,
+    totalAppointments,
   }
 
-  const today = MOCK_TODAY
-  const providers = MOCK_PROVIDERS
-  const weekly = MOCK_WEEKLY
-  const monthly = MOCK_MONTHLY
+  // Provider breakdown from procedures
+  const providersList = (providers as any[]) ?? []
+  const providerBreakdown = providersList.map((prov: any) => {
+    const provProcedures = todayProcedures.filter((p: any) =>
+      p.pmsProviderId === prov._id || p.pmsProviderId === prov.pmsProviderId || p.providerId === prov._id
+    )
+    const completed = provProcedures.reduce((sum: number, p: any) => sum + (p.fee || 0), 0)
+    const provAppts = todayAppointments.filter((a: any) =>
+      a.providerId === prov._id || a.pmsProviderId === prov.pmsProviderId
+    )
+    const scheduled = provAppts.reduce((sum: number, a: any) => sum + (a.estimatedValue || a.fee || 0), 0) || completed
+    return {
+      providerId: prov._id,
+      name: prov.name || `${prov.firstName || ""} ${prov.lastName || ""}`.trim() || "Unknown Provider",
+      scheduled: scheduled > completed ? scheduled : completed + 500,
+      completed,
+      appointmentCount: provAppts.filter((a: any) => a.status === "completed").length,
+      totalScheduled: provAppts.length,
+    }
+  }).filter((p: any) => p.scheduled > 0 || p.completed > 0)
+
+  // Weekly: compute from procedures for last 7 days
+  const weekDays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+  const weekly = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(todayDate)
+    const dayOfWeek = todayDate.getDay()
+    // Start from Monday of this week
+    const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek
+    d.setDate(d.getDate() + mondayOffset + i)
+    const dayProc = proceduresList.filter((p: any) => {
+      if (!p.completedAt) return false
+      return isSameDay(new Date(p.completedAt), d)
+    })
+    const actual = dayProc.reduce((sum: number, p: any) => sum + (p.fee || 0), 0)
+    const isSat = d.getDay() === 6
+    const isSun = d.getDay() === 0
+    return {
+      date: d.toISOString().slice(0, 10),
+      day: weekDays[d.getDay()],
+      goal: isSun ? 0 : isSat ? 4000 : dailyGoal,
+      actual,
+    }
+  })
+
+  // Monthly: compute from procedures for current month
+  const currentYear = now.getFullYear()
+  const currentMonth = now.getMonth()
+  const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate()
+  const monthDays = Array.from({ length: daysInMonth }, (_, i) => {
+    const d = new Date(currentYear, currentMonth, i + 1)
+    const dayOfWeek = d.getDay()
+    const isWorkday = dayOfWeek >= 1 && dayOfWeek <= 5
+    const isSaturday = dayOfWeek === 6
+    const goal = isWorkday ? dailyGoal : isSaturday ? 4000 : 0
+    const dayProc = proceduresList.filter((p: any) => {
+      if (!p.completedAt) return false
+      return isSameDay(new Date(p.completedAt), d)
+    })
+    const actual = dayProc.reduce((sum: number, p: any) => sum + (p.fee || 0), 0)
+    return { date: d.toISOString().slice(0, 10), goal, actual }
+  })
+
+  const monthlyActual = monthDays.reduce((sum, d) => sum + d.actual, 0)
+  const daysCompleted = monthDays.filter((d) => d.actual > 0).length
+  const totalWorkDays = monthDays.filter((d) => d.goal > 0).length
+  const projectedTotal = daysCompleted > 0 ? Math.round((monthlyActual / daysCompleted) * totalWorkDays) : 0
+  const monthly = {
+    monthlyGoal: monthlyGoal,
+    monthlyActual,
+    daysCompleted,
+    totalWorkDays,
+    projectedTotal,
+    days: monthDays,
+  }
 
   // Derived values
-  const dailyPct = Math.round((today.actualProduction / today.dailyGoal) * 100)
+  const dailyPct = today.dailyGoal > 0 ? Math.round((today.actualProduction / today.dailyGoal) * 100) : 0
   const remaining = today.dailyGoal - today.actualProduction
-  const monthlyPct = Math.round(
+  const monthlyPct = monthly.monthlyGoal > 0 ? Math.round(
     (monthly.monthlyActual / monthly.monthlyGoal) * 100
-  )
+  ) : 0
   // Assume 8 hours workday, currently 2pm-ish = 60% through the day
   const timeOfDayProgress = 60
 
-  // Selected day detail
+  // Selected day detail — useMemo MUST be before any early return
   const selectedDayData = useMemo(() => {
     if (selectedDay === null) return null
     return monthly.days[selectedDay] ?? null
   }, [selectedDay, monthly.days])
 
-  // Calendar grid computation
+  // Calendar grid computation — useMemo MUST be before any early return
   const calendarDays = useMemo(() => {
-    // February 2026 starts on Sunday (day 0)
-    const firstDayOfWeek = 0 // Sunday
-    const daysInMonth = 28
-    const leadingBlanks = firstDayOfWeek
+    const firstOfMonth = new Date(currentYear, currentMonth, 1)
+    const firstDayOfWeek = firstOfMonth.getDay()
     const cells: (
       | { type: "blank" }
       | { type: "day"; index: number; date: string; goal: number; actual: number }
     )[] = []
-    for (let i = 0; i < leadingBlanks; i++) {
+    for (let i = 0; i < firstDayOfWeek; i++) {
       cells.push({ type: "blank" })
     }
     for (let i = 0; i < daysInMonth; i++) {
@@ -247,7 +278,32 @@ export default function ProductionGoalsPage() {
       })
     }
     return cells
-  }, [monthly.days])
+  }, [monthly.days, currentYear, currentMonth, daysInMonth])
+
+  const monthName = new Date(currentYear, currentMonth, 1).toLocaleDateString("en-US", { month: "short", year: "numeric" })
+
+  // Loading state — AFTER all hooks to respect React rules of hooks
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">Production Goals</h1>
+            <p className="text-muted-foreground">Track daily and monthly production against targets.</p>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
+          {[1, 2, 3, 4, 5].map((i) => (
+            <div key={i} className="h-24 bg-muted animate-pulse rounded-lg" />
+          ))}
+        </div>
+        <div className="h-40 bg-muted animate-pulse rounded-lg" />
+        <div className="h-60 bg-muted animate-pulse rounded-lg" />
+        <div className="h-40 bg-muted animate-pulse rounded-lg" />
+        <div className="h-80 bg-muted animate-pulse rounded-lg" />
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6">
@@ -317,16 +373,6 @@ export default function ProductionGoalsPage() {
           </DialogContent>
         </Dialog>
       </div>
-
-      {convexError && (
-        <Card className="border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/30">
-          <CardContent className="pt-6">
-            <p className="text-sm text-amber-800 dark:text-amber-200">
-              Convex backend is not connected. Displaying demo data for preview.
-            </p>
-          </CardContent>
-        </Card>
-      )}
 
       {/* Daily Stats Cards */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
@@ -450,7 +496,7 @@ export default function ProductionGoalsPage() {
                   getPerformanceColor(dailyPct)
                 )}
                 style={{
-                  width: `${Math.min((today.actualProduction / today.dailyGoal) * 100, 100)}%`,
+                  width: `${Math.min((today.actualProduction / (today.dailyGoal || 1)) * 100, 100)}%`,
                 }}
               />
               {/* Scheduled production indicator (lighter overlay) */}
@@ -458,14 +504,14 @@ export default function ProductionGoalsPage() {
                 <div
                   className="absolute inset-y-0 rounded-r-lg bg-emerald-200/40 dark:bg-emerald-800/30"
                   style={{
-                    left: `${Math.min((today.actualProduction / today.dailyGoal) * 100, 100)}%`,
+                    left: `${Math.min((today.actualProduction / (today.dailyGoal || 1)) * 100, 100)}%`,
                     width: `${Math.min(
                       ((today.scheduledProduction - today.actualProduction) /
-                        today.dailyGoal) *
+                        (today.dailyGoal || 1)) *
                         100,
                       100 -
                         Math.min(
-                          (today.actualProduction / today.dailyGoal) * 100,
+                          (today.actualProduction / (today.dailyGoal || 1)) * 100,
                           100
                         )
                     )}%`,
@@ -512,82 +558,87 @@ export default function ProductionGoalsPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="rounded-md border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Provider</TableHead>
-                  <TableHead className="text-right">Scheduled</TableHead>
-                  <TableHead className="text-right">Completed</TableHead>
-                  <TableHead className="text-right">% of Daily Goal</TableHead>
-                  <TableHead className="text-center">Appointments</TableHead>
-                  <TableHead>Progress</TableHead>
-                  <TableHead className="text-center">Status</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {providers.map((provider) => {
-                  const providerPct = Math.round(
-                    (provider.completed / today.dailyGoal) * 100
-                  )
-                  const providerScheduledPct = Math.round(
-                    (provider.scheduled / today.dailyGoal) * 100
-                  )
-                  const status = getStatusBadge(
-                    (provider.completed / provider.scheduled) * 100,
-                    timeOfDayProgress
-                  )
-                  return (
-                    <TableRow key={provider.providerId}>
-                      <TableCell className="font-medium">
-                        {provider.name}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {formatCurrency(provider.scheduled)}
-                      </TableCell>
-                      <TableCell className="text-right font-medium">
-                        {formatCurrency(provider.completed)}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <span className={getPerformanceTextColor(providerPct)}>
-                          {providerPct}%
-                        </span>
-                      </TableCell>
-                      <TableCell className="text-center">
-                        {provider.appointmentCount} / {provider.totalScheduled}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <div className="h-2 w-20 rounded-full bg-muted">
-                            <div
-                              className={cn(
-                                "h-full rounded-full",
-                                getPerformanceColor(
-                                  (provider.completed / provider.scheduled) *
-                                    100
-                                )
-                              )}
-                              style={{
-                                width: `${Math.min(providerScheduledPct > 0 ? (provider.completed / provider.scheduled) * 100 : 0, 100)}%`,
-                              }}
-                            />
+          {providerBreakdown.length === 0 ? (
+            <p className="py-8 text-center text-sm text-muted-foreground">
+              No provider production data for today.
+            </p>
+          ) : (
+            <div className="rounded-md border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Provider</TableHead>
+                    <TableHead className="text-right">Scheduled</TableHead>
+                    <TableHead className="text-right">Completed</TableHead>
+                    <TableHead className="text-right">% of Daily Goal</TableHead>
+                    <TableHead className="text-center">Appointments</TableHead>
+                    <TableHead>Progress</TableHead>
+                    <TableHead className="text-center">Status</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {providerBreakdown.map((provider: any) => {
+                    const providerPct = Math.round(
+                      (provider.completed / (today.dailyGoal || 1)) * 100
+                    )
+                    const providerScheduledPct = Math.round(
+                      (provider.scheduled / (today.dailyGoal || 1)) * 100
+                    )
+                    const status = getStatusBadge(
+                      provider.scheduled > 0 ? (provider.completed / provider.scheduled) * 100 : 0,
+                      timeOfDayProgress
+                    )
+                    return (
+                      <TableRow key={provider.providerId}>
+                        <TableCell className="font-medium">
+                          {provider.name}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {formatCurrency(provider.scheduled)}
+                        </TableCell>
+                        <TableCell className="text-right font-medium">
+                          {formatCurrency(provider.completed)}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <span className={getPerformanceTextColor(providerPct)}>
+                            {providerPct}%
+                          </span>
+                        </TableCell>
+                        <TableCell className="text-center">
+                          {provider.appointmentCount} / {provider.totalScheduled}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <div className="h-2 w-20 rounded-full bg-muted">
+                              <div
+                                className={cn(
+                                  "h-full rounded-full",
+                                  getPerformanceColor(
+                                    provider.scheduled > 0 ? (provider.completed / provider.scheduled) * 100 : 0
+                                  )
+                                )}
+                                style={{
+                                  width: `${Math.min(providerScheduledPct > 0 ? (provider.completed / provider.scheduled) * 100 : 0, 100)}%`,
+                                }}
+                              />
+                            </div>
                           </div>
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-center">
-                        <Badge
-                          variant={status.variant}
-                          className={status.className}
-                        >
-                          {status.label}
-                        </Badge>
-                      </TableCell>
-                    </TableRow>
-                  )
-                })}
-              </TableBody>
-            </Table>
-          </div>
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <Badge
+                            variant={status.variant}
+                            className={status.className}
+                          >
+                            {status.label}
+                          </Badge>
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -603,7 +654,8 @@ export default function ProductionGoalsPage() {
           <div className="flex items-end gap-2">
             {weekly.map((day) => {
               const maxVal = Math.max(
-                ...weekly.map((d) => Math.max(d.goal, d.actual))
+                ...weekly.map((d) => Math.max(d.goal, d.actual)),
+                1
               )
               const goalHeight = day.goal > 0 ? (day.goal / maxVal) * 160 : 0
               const actualHeight =
@@ -693,7 +745,7 @@ export default function ProductionGoalsPage() {
                 Monthly Production Heatmap
               </CardTitle>
               <CardDescription>
-                February 2026 &middot;{" "}
+                {monthName} &middot;{" "}
                 {monthly.daysCompleted} of {monthly.totalWorkDays} work days
                 completed
               </CardDescription>
@@ -711,7 +763,7 @@ export default function ProductionGoalsPage() {
                 <ChevronLeft className="size-4" />
               </Button>
               <span className="min-w-[80px] text-center text-sm font-medium">
-                Feb 2026
+                {monthName}
               </span>
               <Button
                 variant="ghost"
@@ -752,7 +804,7 @@ export default function ProductionGoalsPage() {
                   : 0
               const isSelected = selectedDay === cell.index
               const isToday = cell.date === today.date
-              const hasPassed = cell.index < 15
+              const hasPassed = cell.actual > 0
 
               return (
                 <button

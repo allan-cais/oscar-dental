@@ -3,6 +3,7 @@
 import { useState, useMemo } from "react"
 import { useQuery } from "convex/react"
 import { api } from "../../../../../convex/_generated/api"
+import { DataEmptyState } from "@/components/ui/data-empty-state"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -39,7 +40,6 @@ import {
   XCircle,
   MessageSquare,
   CheckCircle2,
-  XCircle as XCircleIcon,
   Phone,
   Mail,
   Smartphone,
@@ -114,30 +114,7 @@ function sourceBadgeClass(source: ConsentSource): string {
 }
 
 // --- Mock Data ---
-
-const MOCK_PATIENTS: PatientConsent[] = [
-  { id: "P001", name: "Sarah Johnson", smsConsent: true, emailConsent: true, voiceConsent: true, messagePrefs: ["appt_reminders", "billing", "marketing", "scheduling"], lastUpdated: "2026-02-04", source: "web_form" },
-  { id: "P002", name: "Michael Chen", smsConsent: true, emailConsent: true, voiceConsent: false, messagePrefs: ["appt_reminders", "billing", "scheduling"], lastUpdated: "2026-02-03", source: "sms_optin" },
-  { id: "P003", name: "Angela Torres", smsConsent: true, emailConsent: true, voiceConsent: false, messagePrefs: ["appt_reminders", "billing"], lastUpdated: "2026-02-01", source: "sms_optin" },
-  { id: "P004", name: "Robert Martinez", smsConsent: true, emailConsent: false, voiceConsent: false, messagePrefs: ["appt_reminders", "scheduling"], lastUpdated: "2026-01-28", source: "phone" },
-  { id: "P005", name: "Emily Park", smsConsent: true, emailConsent: true, voiceConsent: true, messagePrefs: ["appt_reminders", "billing", "marketing", "scheduling"], lastUpdated: "2026-02-05", source: "web_form" },
-  { id: "P006", name: "James Wilson", smsConsent: false, emailConsent: true, voiceConsent: false, messagePrefs: ["billing"], lastUpdated: "2026-02-02", source: "paper" },
-  { id: "P007", name: "Lisa Rodriguez", smsConsent: true, emailConsent: true, voiceConsent: true, messagePrefs: ["appt_reminders", "billing", "scheduling"], lastUpdated: "2026-01-30", source: "web_form" },
-  { id: "P008", name: "David Kim", smsConsent: true, emailConsent: true, voiceConsent: false, messagePrefs: ["appt_reminders", "billing", "marketing", "scheduling"], lastUpdated: "2026-02-04", source: "sms_optin" },
-  { id: "P009", name: "Karen Brown", smsConsent: true, emailConsent: true, voiceConsent: false, messagePrefs: ["appt_reminders", "scheduling"], lastUpdated: "2026-01-25", source: "phone" },
-  { id: "P010", name: "Thomas Brown", smsConsent: false, emailConsent: false, voiceConsent: false, messagePrefs: [], lastUpdated: "2026-02-05", source: "sms_optin" },
-  { id: "P011", name: "Jennifer Lee", smsConsent: true, emailConsent: true, voiceConsent: true, messagePrefs: ["appt_reminders", "billing", "marketing", "scheduling"], lastUpdated: "2026-02-03", source: "web_form" },
-  { id: "P012", name: "Mark Johnson", smsConsent: true, emailConsent: false, voiceConsent: false, messagePrefs: ["appt_reminders", "billing"], lastUpdated: "2026-01-29", source: "sms_optin" },
-  { id: "P013", name: "Nancy Adams", smsConsent: true, emailConsent: true, voiceConsent: false, messagePrefs: ["appt_reminders", "billing", "scheduling"], lastUpdated: "2026-02-01", source: "phone" },
-  { id: "P014", name: "Carlos Diaz", smsConsent: true, emailConsent: true, voiceConsent: true, messagePrefs: ["appt_reminders", "billing", "marketing", "scheduling"], lastUpdated: "2026-02-04", source: "web_form" },
-  { id: "P015", name: "Patricia Lee", smsConsent: false, emailConsent: true, voiceConsent: false, messagePrefs: ["billing", "scheduling"], lastUpdated: "2026-02-02", source: "paper" },
-  { id: "P016", name: "Helen Wright", smsConsent: true, emailConsent: true, voiceConsent: false, messagePrefs: ["appt_reminders", "billing"], lastUpdated: "2026-01-27", source: "sms_optin" },
-  { id: "P017", name: "Christopher Lee", smsConsent: true, emailConsent: true, voiceConsent: true, messagePrefs: ["appt_reminders", "billing", "marketing", "scheduling"], lastUpdated: "2026-02-05", source: "web_form" },
-  { id: "P018", name: "Rachel Adams", smsConsent: true, emailConsent: false, voiceConsent: false, messagePrefs: ["appt_reminders"], lastUpdated: "2026-01-20", source: "phone" },
-  { id: "P019", name: "Maria Gonzalez", smsConsent: true, emailConsent: true, voiceConsent: false, messagePrefs: ["appt_reminders", "billing", "scheduling"], lastUpdated: "2026-02-03", source: "sms_optin" },
-  { id: "P020", name: "Amanda Kim", smsConsent: false, emailConsent: true, voiceConsent: false, messagePrefs: ["billing", "marketing"], lastUpdated: "2026-02-01", source: "web_form" },
-]
-
+// TODO: Wire to real STOP event tracking when Twilio integration is built
 const MOCK_STOP_EVENTS: StopEvent[] = [
   { id: "SE001", dateTime: "2026-02-05 09:23 AM", patient: "Thomas Brown", channel: "SMS", keyword: "STOP", actionTaken: "Immediately opted out", status: "Processed" },
   { id: "SE002", dateTime: "2026-02-04 03:15 PM", patient: "James Wilson", channel: "SMS", keyword: "STOP", actionTaken: "Immediately opted out", status: "Processed" },
@@ -147,12 +124,16 @@ const MOCK_STOP_EVENTS: StopEvent[] = [
   { id: "SE006", dateTime: "2026-01-28 10:30 AM", patient: "Karen Brown", channel: "SMS", keyword: "STOP", actionTaken: "Immediately opted out", status: "Processed" },
 ]
 
+// TODO: Wire to real message type stats when Twilio integration is built
 const MOCK_MESSAGE_TYPES: MessageTypeStats[] = [
   { type: "appt_reminders", label: "Appointment Reminders", description: "Automated reminders for upcoming appointments", subscribedCount: 172, optOutCount: 15, optOutPct: "8.0%", enabled: true },
   { type: "billing", label: "Billing Notifications", description: "Payment reminders, statements, and text-to-pay links", subscribedCount: 168, optOutCount: 19, optOutPct: "10.2%", enabled: true },
   { type: "marketing", label: "Marketing / Review Requests", description: "Review requests, promotional offers, and newsletters", subscribedCount: 112, optOutCount: 75, optOutPct: "40.1%", enabled: true },
   { type: "scheduling", label: "Scheduling Confirmations", description: "Appointment confirmations, rescheduling notices, and recall reminders", subscribedCount: 158, optOutCount: 29, optOutPct: "15.5%", enabled: true },
 ]
+
+const VALID_MESSAGE_TYPES: MessageType[] = ["appt_reminders", "billing", "marketing", "scheduling"]
+const VALID_SOURCES: ConsentSource[] = ["sms_optin", "web_form", "phone", "paper"]
 
 // --- Component ---
 
@@ -167,17 +148,32 @@ export default function TCPASettingsPage() {
   }>({ smsConsent: false, emailConsent: false, voiceConsent: false, messagePrefs: [] })
   const [messageTypes, setMessageTypes] = useState<MessageTypeStats[]>(MOCK_MESSAGE_TYPES)
 
-  // Try Convex, fall back to mock
-  let patients: PatientConsent[] | undefined
-  let convexError = false
-  try {
-    // eslint-disable-next-line react-hooks/rules-of-hooks
-    const result = useQuery(api.tcpa.queries.listConsents)
-    patients = (result as PatientConsent[] | undefined) ?? undefined
-  } catch {
-    convexError = true
-    patients = MOCK_PATIENTS
-  }
+  // Fetch patient consent data from Convex
+  const rawConsents = useQuery((api as any).tcpa.queries.listConsents)
+
+  // Map backend results to the PatientConsent interface
+  const patients: PatientConsent[] | undefined = rawConsents
+    ? (rawConsents as any[]).map((r: any): PatientConsent => ({
+        id: r.id,
+        name: r.name,
+        smsConsent: r.smsConsent,
+        emailConsent: r.emailConsent,
+        voiceConsent: r.voiceConsent,
+        messagePrefs: (r.messagePrefs as string[]).filter(
+          (p): p is MessageType => VALID_MESSAGE_TYPES.includes(p as MessageType)
+        ),
+        lastUpdated: r.lastUpdated
+          ? new Date(r.lastUpdated).toLocaleDateString("en-US", {
+              year: "numeric",
+              month: "short",
+              day: "numeric",
+            })
+          : "",
+        source: VALID_SOURCES.includes(r.source as ConsentSource)
+          ? (r.source as ConsentSource)
+          : "paper",
+      }))
+    : undefined
 
   const filtered = useMemo(() => {
     if (!patients) return []
@@ -240,16 +236,6 @@ export default function TCPASettingsPage() {
           granular opt-out preferences per TCPA requirements.
         </p>
       </div>
-
-      {convexError && (
-        <Card className="border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/30">
-          <CardContent className="pt-6">
-            <p className="text-sm text-amber-800 dark:text-amber-200">
-              Convex backend is not connected. Displaying mock data for preview.
-            </p>
-          </CardContent>
-        </Card>
-      )}
 
       {/* Stats Cards */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -369,10 +355,19 @@ export default function TCPASettingsPage() {
                       </div>
                     </TableCell>
                   </TableRow>
+                ) : patients.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={8} className="p-0">
+                      <DataEmptyState
+                        resource="consent records"
+                        message="No patient communication consent data found. Consent records are created when patients opt in to communications."
+                      />
+                    </TableCell>
+                  </TableRow>
                 ) : filtered.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={8} className="h-24 text-center text-muted-foreground">
-                      No patients found.
+                      No patients match your search.
                     </TableCell>
                   </TableRow>
                 ) : (
@@ -383,21 +378,21 @@ export default function TCPASettingsPage() {
                         {patient.smsConsent ? (
                           <CheckCircle2 className="mx-auto size-4 text-emerald-600" />
                         ) : (
-                          <XCircleIcon className="mx-auto size-4 text-red-500" />
+                          <XCircle className="mx-auto size-4 text-red-500" />
                         )}
                       </TableCell>
                       <TableCell className="text-center">
                         {patient.emailConsent ? (
                           <CheckCircle2 className="mx-auto size-4 text-emerald-600" />
                         ) : (
-                          <XCircleIcon className="mx-auto size-4 text-red-500" />
+                          <XCircle className="mx-auto size-4 text-red-500" />
                         )}
                       </TableCell>
                       <TableCell className="text-center">
                         {patient.voiceConsent ? (
                           <CheckCircle2 className="mx-auto size-4 text-emerald-600" />
                         ) : (
-                          <XCircleIcon className="mx-auto size-4 text-red-500" />
+                          <XCircle className="mx-auto size-4 text-red-500" />
                         )}
                       </TableCell>
                       <TableCell>
@@ -593,15 +588,15 @@ export default function TCPASettingsPage() {
         onOpenChange={(open) => { if (!open) setEditingPatient(null) }}
       >
         <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{editingPatient ? `Edit Consent - ${editingPatient.name}` : "Edit Consent"}</DialogTitle>
+            <DialogDescription>
+              Update communication channel consent and message type
+              preferences for this patient.
+            </DialogDescription>
+          </DialogHeader>
           {editingPatient && (
             <>
-              <DialogHeader>
-                <DialogTitle>Edit Consent - {editingPatient.name}</DialogTitle>
-                <DialogDescription>
-                  Update communication channel consent and message type
-                  preferences for this patient.
-                </DialogDescription>
-              </DialogHeader>
 
               {/* Channel Toggles */}
               <div className="space-y-4">

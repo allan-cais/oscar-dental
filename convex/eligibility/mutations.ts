@@ -38,7 +38,7 @@ export const verify = mutation({
       // If we have a valid cached result and an appointmentId was provided
       // but the cached result isn't linked to it, we could optionally link it.
       // For now, just return the cached result.
-      return { _id: cached._id, ...cached, fromCache: true };
+      return { ...cached, fromCache: true };
     }
 
     // 3. No valid cache - get insurance info and call clearinghouse

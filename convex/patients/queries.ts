@@ -66,30 +66,41 @@ export const list = query({
 
 /**
  * Get a single patient by ID. Verifies orgId matches.
- * Logs PHI access via audit log.
- *
- * Uses mutation instead of query to enable audit logging (createAuditLog
- * requires MutationCtx for the write to auditLogs table).
  */
-export const getById = mutation({
+export const getById = query({
   args: { patientId: v.id("patients") },
   handler: async (ctx, args) => {
     const orgId = await getOrgId(ctx);
 
     const patient = await ctx.db.get(args.patientId);
-    if (!patient || patient.orgId !== orgId) {
+    if (!patient || (patient as any).orgId !== orgId) {
       throw new Error("Patient not found");
     }
 
-    // Log PHI access
+    return patient;
+  },
+});
+
+/**
+ * Log PHI access when viewing a patient.
+ * Called as a side-effect from the patient detail page.
+ */
+export const logPatientView = mutation({
+  args: { patientId: v.id("patients") },
+  handler: async (ctx, args) => {
+    const orgId = await getOrgId(ctx);
+
+    const patient = await ctx.db.get(args.patientId);
+    if (!patient || (patient as any).orgId !== orgId) {
+      return; // Silently skip — don't throw on audit log side-effect
+    }
+
     await createAuditLog(ctx, {
       action: "patient.view",
       resourceType: "patient",
       resourceId: args.patientId,
       phiAccessed: true,
     });
-
-    return patient;
   },
 });
 
@@ -202,5 +213,21 @@ export const getBalance = query({
       insuranceBalance: patient.insuranceBalance ?? 0,
       totalBalance: (patient.patientBalance ?? 0) + (patient.insuranceBalance ?? 0),
     };
+  },
+});
+
+/**
+ * List patient match queue items for the current organization.
+ * Returns patients that have potential PMS identity matches needing review.
+ * Currently returns empty array — MPI matching logic will populate this
+ * once patient deduplication is implemented.
+ */
+export const listMatchQueue = query({
+  args: {},
+  handler: async (ctx) => {
+    await getOrgId(ctx);
+    // TODO: Implement MPI matching logic to detect potential duplicate patients
+    // between Oscar records and PMS-synced records.
+    return [];
   },
 });

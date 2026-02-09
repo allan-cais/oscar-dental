@@ -4,8 +4,10 @@ import { useState, useMemo } from "react"
 import { useQuery, useMutation } from "convex/react"
 import { api } from "../../../../../convex/_generated/api"
 import type { Id } from "../../../../../convex/_generated/dataModel"
+import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
+import { Skeleton } from "@/components/ui/skeleton"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
@@ -85,80 +87,6 @@ function formatDate(timestamp?: number): string {
   })
 }
 
-// Mock data for when Convex is not connected
-const MOCK_USERS = [
-  {
-    _id: "mock_1" as Id<"users">,
-    _creationTime: 0,
-    firstName: "John",
-    lastName: "Salter",
-    email: "john@canopydental.com",
-    role: "admin" as Role,
-    isActive: true,
-    lastLoginAt: Date.now() - 86400000,
-    createdAt: Date.now() - 86400000 * 30,
-    updatedAt: Date.now(),
-    orgId: "mock",
-    clerkUserId: "mock",
-  },
-  {
-    _id: "mock_2" as Id<"users">,
-    _creationTime: 0,
-    firstName: "Sarah",
-    lastName: "Johnson",
-    email: "sarah@canopydental.com",
-    role: "office_manager" as Role,
-    isActive: true,
-    lastLoginAt: Date.now() - 3600000,
-    createdAt: Date.now() - 86400000 * 20,
-    updatedAt: Date.now(),
-    orgId: "mock",
-    clerkUserId: "mock",
-  },
-  {
-    _id: "mock_3" as Id<"users">,
-    _creationTime: 0,
-    firstName: "Mike",
-    lastName: "Chen",
-    email: "mike@canopydental.com",
-    role: "billing" as Role,
-    isActive: true,
-    lastLoginAt: Date.now() - 7200000,
-    createdAt: Date.now() - 86400000 * 15,
-    updatedAt: Date.now(),
-    orgId: "mock",
-    clerkUserId: "mock",
-  },
-  {
-    _id: "mock_4" as Id<"users">,
-    _creationTime: 0,
-    firstName: "Dr. Emily",
-    lastName: "Park",
-    email: "emily@canopydental.com",
-    role: "provider" as Role,
-    isActive: true,
-    lastLoginAt: Date.now() - 43200000,
-    createdAt: Date.now() - 86400000 * 10,
-    updatedAt: Date.now(),
-    orgId: "mock",
-    clerkUserId: "mock",
-  },
-  {
-    _id: "mock_5" as Id<"users">,
-    _creationTime: 0,
-    firstName: "Lisa",
-    lastName: "Rodriguez",
-    email: "lisa@canopydental.com",
-    role: "front_desk" as Role,
-    isActive: false,
-    lastLoginAt: Date.now() - 86400000 * 14,
-    createdAt: Date.now() - 86400000 * 60,
-    updatedAt: Date.now(),
-    orgId: "mock",
-    clerkUserId: "mock",
-  },
-]
-
 export default function UsersSettingsPage() {
   const [search, setSearch] = useState("")
   const [roleFilter, setRoleFilter] = useState<string>("all")
@@ -170,31 +98,10 @@ export default function UsersSettingsPage() {
     role: "front_desk" as Role,
   })
 
-  // Try Convex query, fall back to mock data
-  let users: typeof MOCK_USERS | undefined
-  let convexError = false
-  try {
-    // eslint-disable-next-line react-hooks/rules-of-hooks
-    const result = useQuery(api.users.queries.list)
-    users = result ?? undefined
-  } catch {
-    convexError = true
-    users = MOCK_USERS
-  }
-
-  let createUser: ((args: any) => Promise<any>) | null = null
-  let deactivateUser: ((args: any) => Promise<any>) | null = null
-  let updateUserRole: ((args: any) => Promise<any>) | null = null
-  try {
-    // eslint-disable-next-line react-hooks/rules-of-hooks
-    createUser = useMutation(api.users.mutations.create)
-    // eslint-disable-next-line react-hooks/rules-of-hooks
-    deactivateUser = useMutation(api.users.mutations.deactivate)
-    // eslint-disable-next-line react-hooks/rules-of-hooks
-    updateUserRole = useMutation(api.users.mutations.updateRole)
-  } catch {
-    // Mutations unavailable when Convex is not connected
-  }
+  const users = useQuery(api.users.queries.list, {})
+  const createUser = useMutation(api.users.mutations.create)
+  const deactivateUser = useMutation(api.users.mutations.deactivate)
+  const updateUserRole = useMutation(api.users.mutations.updateRole)
 
   const filtered = useMemo(() => {
     if (!users) return []
@@ -209,7 +116,6 @@ export default function UsersSettingsPage() {
   }, [users, search, roleFilter])
 
   async function handleInvite() {
-    if (!createUser) return
     try {
       await createUser({
         email: inviteForm.email,
@@ -219,26 +125,27 @@ export default function UsersSettingsPage() {
       })
       setInviteOpen(false)
       setInviteForm({ firstName: "", lastName: "", email: "", role: "front_desk" })
-    } catch (err) {
-      console.error("Failed to create user:", err)
+      toast.success("User invited successfully")
+    } catch (err: any) {
+      toast.error(err.message ?? "Failed to create user")
     }
   }
 
-  async function handleToggleActive(userId: Id<"users">) {
-    if (!deactivateUser) return
+  async function handleToggleActive(userId: Id<"users">, isActive: boolean) {
     try {
       await deactivateUser({ userId })
-    } catch (err) {
-      console.error("Failed to toggle user status:", err)
+      toast.success(isActive ? "User deactivated" : "User reactivated")
+    } catch (err: any) {
+      toast.error(err.message ?? "Failed to update user status")
     }
   }
 
   async function handleRoleChange(userId: Id<"users">, role: Role) {
-    if (!updateUserRole) return
     try {
       await updateUserRole({ userId, role })
-    } catch (err) {
-      console.error("Failed to update role:", err)
+      toast.success(`Role updated to ${roleLabel(role)}`)
+    } catch (err: any) {
+      toast.error(err.message ?? "Failed to update role")
     }
   }
 
@@ -343,16 +250,6 @@ export default function UsersSettingsPage() {
         </Dialog>
       </div>
 
-      {convexError && (
-        <Card className="border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/30">
-          <CardContent className="pt-6">
-            <p className="text-sm text-amber-800 dark:text-amber-200">
-              Convex backend is not connected. Displaying mock data for preview.
-            </p>
-          </CardContent>
-        </Card>
-      )}
-
       <Card>
         <CardHeader>
           <CardTitle>Team Members</CardTitle>
@@ -401,15 +298,17 @@ export default function UsersSettingsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {!users ? (
-                  <TableRow>
-                    <TableCell colSpan={6} className="h-24 text-center">
-                      <div className="flex items-center justify-center gap-2 text-muted-foreground">
-                        <div className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                        Loading users...
-                      </div>
-                    </TableCell>
-                  </TableRow>
+                {users === undefined ? (
+                  Array.from({ length: 4 }).map((_, i) => (
+                    <TableRow key={i}>
+                      <TableCell><Skeleton className="h-4 w-28" /></TableCell>
+                      <TableCell><Skeleton className="h-4 w-40" /></TableCell>
+                      <TableCell><Skeleton className="h-5 w-16" /></TableCell>
+                      <TableCell><Skeleton className="h-5 w-14" /></TableCell>
+                      <TableCell><Skeleton className="h-4 w-20" /></TableCell>
+                      <TableCell><Skeleton className="h-6 w-6" /></TableCell>
+                    </TableRow>
+                  ))
                 ) : filtered.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
@@ -469,7 +368,7 @@ export default function UsersSettingsPage() {
                             ))}
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
-                              onClick={() => handleToggleActive(user._id)}
+                              onClick={() => handleToggleActive(user._id, user.isActive)}
                               className={
                                 user.isActive
                                   ? "text-destructive focus:text-destructive"

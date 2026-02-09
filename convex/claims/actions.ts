@@ -14,7 +14,13 @@ import { api } from "../_generated/api";
  */
 export const autoGenerateClaim = action({
   args: { appointmentId: v.id("appointments") },
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<{ claimId: string; scrubResult: any }> => {
+    // Auth check — ensure caller is authenticated
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Not authenticated");
+    }
+
     // 1. Get the appointment
     const appointment: any = await ctx.runQuery(
       api.scheduling.queries.getById,
@@ -65,7 +71,7 @@ export const autoGenerateClaim = action({
     );
 
     // 4. Create the claim
-    const claimId = await ctx.runMutation(api.claims.mutations.create, {
+    const claimId: any = await ctx.runMutation(api.claims.mutations.create, {
       practiceId: appointment.practiceId,
       patientId: appointment.patientId,
       appointmentId: args.appointmentId,
@@ -76,7 +82,7 @@ export const autoGenerateClaim = action({
     });
 
     // 5. Run scrub on the new claim
-    const scrubResult = await ctx.runMutation(api.claims.mutations.scrub, {
+    const scrubResult: any = await ctx.runMutation(api.claims.mutations.scrub, {
       claimId,
     });
 

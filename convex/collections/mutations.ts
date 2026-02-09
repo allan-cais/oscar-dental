@@ -13,6 +13,9 @@ const STEP_CONFIG = [
   { day: 90, action: "Escalate to collections agency" },
 ] as const;
 
+// Map day numbers (stored in currentStep) to STEP_CONFIG array indices
+const STEP_DAY_TO_INDEX: Record<number, number> = { 0: 0, 7: 1, 14: 2, 30: 3, 60: 4, 90: 5 };
+
 /**
  * Create a new collection sequence for a patient.
  * Starts at step 0 (statement generation) with nextActionDate = now.
@@ -54,10 +57,10 @@ export const create = mutation({
     const now = Date.now();
 
     // Build initial steps array
-    const steps = STEP_CONFIG.map((config, index) => ({
+    const steps = STEP_CONFIG.map((config) => ({
       day: config.day,
       action: config.action,
-      status: index === 0 ? ("pending" as const) : ("pending" as const),
+      status: "pending" as const,
       sentAt: undefined,
       response: undefined,
     }));
@@ -100,8 +103,12 @@ export const advanceStep = internalMutation({
     for (const seq of activeSequences) {
       const currentStep = seq.currentStep ?? 0;
 
+      // Convert day number to STEP_CONFIG array index
+      const stepIndex = STEP_DAY_TO_INDEX[currentStep];
+      if (stepIndex === undefined) continue;
+
       // Check if enough time has passed since sequence started
-      const stepConfig = STEP_CONFIG[currentStep];
+      const stepConfig = STEP_CONFIG[stepIndex];
       if (!stepConfig) continue;
 
       const daysSinceStart = (now - seq.startedAt) / (1000 * 60 * 60 * 24);
@@ -109,13 +116,13 @@ export const advanceStep = internalMutation({
 
       // Check if this step was already executed
       const steps = [...seq.steps];
-      if (steps[currentStep]?.status === "sent" || steps[currentStep]?.status === "completed") {
+      if (steps[stepIndex]?.status === "sent" || steps[stepIndex]?.status === "completed") {
         // Already processed, try advancing to next step
-        if (currentStep + 1 < STEP_CONFIG.length) {
-          const nextStepConfig = STEP_CONFIG[currentStep + 1];
+        if (stepIndex + 1 < STEP_CONFIG.length) {
+          const nextStepConfig = STEP_CONFIG[stepIndex + 1];
           if (daysSinceStart >= nextStepConfig.day) {
             await ctx.db.patch(seq._id, {
-              currentStep: currentStep + 1,
+              currentStep: STEP_CONFIG[stepIndex + 1].day,
               updatedAt: now,
             });
           }
@@ -126,7 +133,7 @@ export const advanceStep = internalMutation({
       // Execute the current step
       const patient = await ctx.db.get(seq.patientId);
 
-      switch (currentStep) {
+      switch (stepIndex) {
         case 0: {
           // Step 0: Generate statement
           steps[0] = {
@@ -242,7 +249,7 @@ export const advanceStep = internalMutation({
 
           // Update sequence status
           await ctx.db.patch(seq._id, {
-            currentStep: 5,
+            currentStep: STEP_CONFIG[5].day,
             status: "completed",
             steps,
             lastActionAt: now,
@@ -277,10 +284,10 @@ export const advanceStep = internalMutation({
       }
 
       // Advance to next step if not the final step
-      const nextStep = currentStep + 1 < STEP_CONFIG.length ? currentStep + 1 : currentStep;
+      const nextStepIndex = stepIndex + 1 < STEP_CONFIG.length ? stepIndex + 1 : stepIndex;
 
       await ctx.db.patch(seq._id, {
-        currentStep: nextStep,
+        currentStep: STEP_CONFIG[nextStepIndex].day,
         steps,
         lastActionAt: now,
         updatedAt: now,

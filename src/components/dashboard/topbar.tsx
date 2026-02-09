@@ -3,7 +3,8 @@
 import { useState } from "react"
 import { usePathname } from "next/navigation"
 import Link from "next/link"
-import { Menu, LogOut, User, Settings, Bell, Info, AlertTriangle, CheckCircle2, X } from "lucide-react"
+import { Menu, LogOut, User, Settings, Bell, Info, AlertTriangle, CheckCircle2, X, MessageSquare } from "lucide-react"
+import { useChatContext } from "@/lib/chat-context"
 
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -149,25 +150,35 @@ function notificationIcon(type: NotificationType) {
   }
 }
 
-function getBreadcrumbs(pathname: string) {
+/** Convex IDs are lowercase alphanumeric strings 20+ chars — detect them to swap in friendly names */
+const CONVEX_ID_RE = /^[a-z0-9]{20,}$/
+
+function getBreadcrumbs(pathname: string, entityName?: string) {
   const segments = pathname.split("/").filter(Boolean)
   const crumbs: { label: string; href: string }[] = []
 
   let path = ""
   for (const segment of segments) {
     path += `/${segment}`
-    const label = segment
-      .replace(/-/g, " ")
-      .replace(/\b\w/g, (c) => c.toUpperCase())
+    let label: string
+    if (CONVEX_ID_RE.test(segment) && entityName) {
+      label = entityName
+    } else {
+      label = segment
+        .replace(/-/g, " ")
+        .replace(/\b\w/g, (c) => c.toUpperCase())
+    }
     crumbs.push({ label, href: path })
   }
 
   return crumbs
 }
 
-export function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
+export function Topbar({ onMenuClick, onChatClick }: { onMenuClick: () => void; onChatClick?: () => void }) {
   const pathname = usePathname()
-  const breadcrumbs = getBreadcrumbs(pathname)
+  const { entityData } = useChatContext()
+  const entityName = entityData?.patientName as string | undefined
+  const breadcrumbs = getBreadcrumbs(pathname, entityName)
   const [notifications, setNotifications] = useState<Notification[]>(INITIAL_NOTIFICATIONS)
 
   const unreadCount = notifications.filter((n) => !n.read).length
@@ -304,6 +315,12 @@ export function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
           </div>
         </SheetContent>
       </Sheet>
+
+      {/* Chat button */}
+      <Button variant="ghost" size="icon-sm" onClick={onChatClick}>
+        <MessageSquare className="size-5" />
+        <span className="sr-only">Oscar AI Chat</span>
+      </Button>
 
       {/* User menu */}
       <DropdownMenu>

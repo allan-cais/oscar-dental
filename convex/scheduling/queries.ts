@@ -145,6 +145,8 @@ export const getById = query({
 
 /**
  * Get all appointments for a specific date, ordered by startTime.
+ * Enriches each appointment with patient name/DOB, operatory name,
+ * and appointment type name so the calendar UI can display them.
  */
 export const getByDate = query({
   args: { date: v.string() },
@@ -156,7 +158,25 @@ export const getByDate = query({
       .withIndex("by_date", (q) => q.eq("orgId", orgId).eq("date", args.date))
       .collect();
 
-    return appointments.sort((a, b) => a.startTime.localeCompare(b.startTime));
+    const enriched = await Promise.all(
+      appointments.map(async (a) => {
+        const patient = a.patientId ? await ctx.db.get(a.patientId) : null;
+        const operatory = a.operatoryId ? await ctx.db.get(a.operatoryId) : null;
+        const appointmentType = a.appointmentTypeId ? await ctx.db.get(a.appointmentTypeId) : null;
+
+        return {
+          ...a,
+          patientName: patient
+            ? `${(patient as any).firstName ?? ""} ${(patient as any).lastName ?? ""}`.trim()
+            : undefined,
+          patientDob: patient ? (patient as any).dateOfBirth : undefined,
+          operatoryName: operatory ? (operatory as any).name : undefined,
+          appointmentTypeName: appointmentType ? (appointmentType as any).name : undefined,
+        };
+      })
+    );
+
+    return enriched.sort((a, b) => a.startTime.localeCompare(b.startTime));
   },
 });
 

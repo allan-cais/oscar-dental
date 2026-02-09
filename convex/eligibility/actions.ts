@@ -67,21 +67,21 @@ export const runBatchVerification = internalAction({
           { patientId: appointment.patientId }
         );
 
-        if (!patient?.primaryInsurance) {
+        if (!(patient as any)?.primaryInsurance) {
           failed++;
           continue;
         }
 
-        const insurance = patient.primaryInsurance;
+        const insurance = (patient as any).primaryInsurance;
 
         // Call clearinghouse
         const result = await adapter.verifyEligibility(
           insurance.payerId,
           insurance.memberId,
           {
-            firstName: patient.firstName,
-            lastName: patient.lastName,
-            dateOfBirth: patient.dateOfBirth,
+            firstName: (patient as any).firstName,
+            lastName: (patient as any).lastName,
+            dateOfBirth: (patient as any).dateOfBirth,
             memberId: insurance.memberId,
             groupNumber: insurance.groupNumber,
             relationship: insurance.relationship,

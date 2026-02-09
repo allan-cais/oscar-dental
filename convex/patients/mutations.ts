@@ -1,7 +1,42 @@
 import { mutation } from "../_generated/server";
+import { internal } from "../_generated/api";
+import type { MutationCtx } from "../_generated/server";
 import { v } from "convex/values";
 import { getOrgId } from "../lib/auth";
 import { createAuditLog } from "../lib/audit";
+
+/**
+ * Schedule push sync to NexHealth after a patient mutation.
+ * Queries for first active NexHealth config for the org.
+ * If config exists, pushes to NexHealth. If not, no-op.
+ */
+async function schedulePatientPushSync(
+  ctx: MutationCtx,
+  params: {
+    patientId: string;
+    orgId: string;
+  }
+) {
+  // Find first active NexHealth config for the org
+  const config = await ctx.db
+    .query("nexhealthConfigs")
+    .filter((q: any) =>
+      q.and(q.eq(q.field("orgId"), params.orgId), q.eq(q.field("isActive"), true))
+    )
+    .first();
+
+  if (!config) return;
+
+  await ctx.scheduler.runAfter(
+    0,
+    internal.nexhealth.actions.pushPatientUpdate,
+    {
+      patientId: params.patientId as any,
+      orgId: params.orgId,
+      practiceId: config.practiceId as any,
+    }
+  );
+}
 
 // Reusable insurance object validator
 const insuranceValidator = v.object({
@@ -85,6 +120,8 @@ export const create = mutation({
       phiAccessed: true,
     });
 
+    await schedulePatientPushSync(ctx, { patientId: patientId as string, orgId });
+
     return patientId;
   },
 });
@@ -140,6 +177,8 @@ export const update = mutation({
       details: { updatedFields: Object.keys(fields).filter((k) => (fields as any)[k] !== undefined) },
       phiAccessed: true,
     });
+
+    await schedulePatientPushSync(ctx, { patientId: patientId as string, orgId });
 
     return patientId;
   },

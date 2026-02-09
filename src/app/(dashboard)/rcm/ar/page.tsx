@@ -3,7 +3,7 @@
 import { useState, useMemo } from "react"
 import { useQuery } from "convex/react"
 import { api } from "../../../../../convex/_generated/api"
-import type { Id } from "../../../../../convex/_generated/dataModel"
+import { DataEmptyState } from "@/components/ui/data-empty-state"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -64,32 +64,10 @@ import {
   XCircle,
 } from "lucide-react"
 
-// ─── Mock Data ───────────────────────────────────────────────────────────────
-
-const MOCK_AGING = {
-  insuranceAging: [
-    { bucket: "0-30", count: 45, totalAmount: 28500 },
-    { bucket: "31-60", count: 22, totalAmount: 18200 },
-    { bucket: "61-90", count: 12, totalAmount: 14500 },
-    { bucket: "91-120", count: 8, totalAmount: 9800 },
-    { bucket: "120+", count: 5, totalAmount: 7200 },
-  ],
-  patientAging: [
-    { bucket: "0-30", count: 30, totalAmount: 8500 },
-    { bucket: "31-60", count: 15, totalAmount: 5200 },
-    { bucket: "61-90", count: 8, totalAmount: 3800 },
-    { bucket: "91-120", count: 4, totalAmount: 2100 },
-    { bucket: "120+", count: 3, totalAmount: 1800 },
-  ],
-  totals: {
-    insurance: 78200,
-    patient: 21400,
-    total: 99600,
-  },
-}
+// ─── Types ────────────────────────────────────────────────────────────────
 
 type AgingClaim = {
-  _id: Id<"claims">
+  _id: string
   patientName: string
   payerName: string
   claimNumber: string
@@ -102,206 +80,8 @@ type AgingClaim = {
   dateSubmitted: string
 }
 
-const MOCK_AGING_CLAIMS: AgingClaim[] = [
-  {
-    _id: "ac_1" as Id<"claims">,
-    patientName: "Wilson, James",
-    payerName: "Delta Dental",
-    claimNumber: "CLM-2024-0891",
-    amount: 1250.0,
-    ageDays: 12,
-    bucket: "0-30",
-    type: "insurance",
-    status: "submitted",
-    lastAction: "Submitted electronically",
-    dateSubmitted: "2026-01-24",
-  },
-  {
-    _id: "ac_2" as Id<"claims">,
-    patientName: "Park, Emily",
-    payerName: "Cigna",
-    claimNumber: "CLM-2024-0876",
-    amount: 875.0,
-    ageDays: 8,
-    bucket: "0-30",
-    type: "insurance",
-    status: "submitted",
-    lastAction: "Submitted electronically",
-    dateSubmitted: "2026-01-28",
-  },
-  {
-    _id: "ac_11" as Id<"claims">,
-    patientName: "Rivera, Carlos",
-    payerName: "MetLife",
-    claimNumber: "CLM-2024-0888",
-    amount: 560.0,
-    ageDays: 18,
-    bucket: "0-30",
-    type: "insurance",
-    status: "submitted",
-    lastAction: "Submitted electronically",
-    dateSubmitted: "2026-01-18",
-  },
-  {
-    _id: "ac_3" as Id<"claims">,
-    patientName: "Chen, David",
-    payerName: "MetLife",
-    claimNumber: "CLM-2024-0854",
-    amount: 2100.0,
-    ageDays: 35,
-    bucket: "31-60",
-    type: "insurance",
-    status: "pending",
-    lastAction: "Payer acknowledged receipt",
-    dateSubmitted: "2026-01-01",
-  },
-  {
-    _id: "ac_4" as Id<"claims">,
-    patientName: "Thompson, Sarah",
-    payerName: "Aetna",
-    claimNumber: "CLM-2024-0812",
-    amount: 3200.0,
-    ageDays: 48,
-    bucket: "31-60",
-    type: "insurance",
-    status: "in_review",
-    lastAction: "Called payer — under review",
-    dateSubmitted: "2025-12-19",
-  },
-  {
-    _id: "ac_5" as Id<"claims">,
-    patientName: "Garcia, Maria",
-    payerName: "Guardian",
-    claimNumber: "CLM-2024-0788",
-    amount: 4500.0,
-    ageDays: 67,
-    bucket: "61-90",
-    type: "insurance",
-    status: "pending",
-    lastAction: "Follow-up call scheduled",
-    dateSubmitted: "2025-11-30",
-  },
-  {
-    _id: "ac_12" as Id<"claims">,
-    patientName: "Kim, Jennifer",
-    payerName: "United Healthcare",
-    claimNumber: "CLM-2024-0775",
-    amount: 1950.0,
-    ageDays: 74,
-    bucket: "61-90",
-    type: "insurance",
-    status: "pending",
-    lastAction: "Additional docs requested",
-    dateSubmitted: "2025-11-23",
-  },
-  {
-    _id: "ac_6" as Id<"claims">,
-    patientName: "Johnson, Robert",
-    payerName: "Delta Dental",
-    claimNumber: "CLM-2024-0745",
-    amount: 1850.0,
-    ageDays: 95,
-    bucket: "91-120",
-    type: "insurance",
-    status: "escalated",
-    lastAction: "Escalated to supervisor",
-    dateSubmitted: "2025-11-02",
-  },
-  {
-    _id: "ac_13" as Id<"claims">,
-    patientName: "Anderson, William",
-    payerName: "Aetna",
-    claimNumber: "CLM-2024-0732",
-    amount: 2280.0,
-    ageDays: 108,
-    bucket: "91-120",
-    type: "insurance",
-    status: "escalated",
-    lastAction: "Appeal letter sent",
-    dateSubmitted: "2025-10-20",
-  },
-  {
-    _id: "ac_7" as Id<"claims">,
-    patientName: "Lee, Susan",
-    payerName: "Cigna",
-    claimNumber: "CLM-2024-0698",
-    amount: 2800.0,
-    ageDays: 132,
-    bucket: "120+",
-    type: "insurance",
-    status: "escalated",
-    lastAction: "Second appeal filed",
-    dateSubmitted: "2025-09-26",
-  },
-  {
-    _id: "ac_8" as Id<"claims">,
-    patientName: "Brown, Michael",
-    payerName: "Self-Pay",
-    claimNumber: "PAT-2024-0155",
-    amount: 450.0,
-    ageDays: 22,
-    bucket: "0-30",
-    type: "patient",
-    status: "billed",
-    lastAction: "Statement mailed",
-    dateSubmitted: "2026-01-14",
-  },
-  {
-    _id: "ac_9" as Id<"claims">,
-    patientName: "Martinez, Ana",
-    payerName: "Self-Pay",
-    claimNumber: "PAT-2024-0142",
-    amount: 1200.0,
-    ageDays: 55,
-    bucket: "31-60",
-    type: "patient",
-    status: "billed",
-    lastAction: "Second statement sent",
-    dateSubmitted: "2025-12-12",
-  },
-  {
-    _id: "ac_10" as Id<"claims">,
-    patientName: "Davis, Patricia",
-    payerName: "Self-Pay",
-    claimNumber: "PAT-2024-0128",
-    amount: 780.0,
-    ageDays: 78,
-    bucket: "61-90",
-    type: "patient",
-    status: "collections",
-    lastAction: "Collections notice sent",
-    dateSubmitted: "2025-11-19",
-  },
-  {
-    _id: "ac_14" as Id<"claims">,
-    patientName: "Taylor, Jessica",
-    payerName: "Self-Pay",
-    claimNumber: "PAT-2024-0118",
-    amount: 340.0,
-    ageDays: 98,
-    bucket: "91-120",
-    type: "patient",
-    status: "collections",
-    lastAction: "Payment plan offered",
-    dateSubmitted: "2025-10-30",
-  },
-  {
-    _id: "ac_15" as Id<"claims">,
-    patientName: "Moore, Richard",
-    payerName: "Self-Pay",
-    claimNumber: "PAT-2024-0098",
-    amount: 920.0,
-    ageDays: 145,
-    bucket: "120+",
-    type: "patient",
-    status: "collections",
-    lastAction: "Final notice — pending write-off review",
-    dateSubmitted: "2025-09-13",
-  },
-]
-
 type WorklistItem = {
-  claimId: Id<"claims">
+  claimId: string
   patientName: string
   payerName: string
   claimNumber: string
@@ -311,189 +91,6 @@ type WorklistItem = {
   collectionProbability: number
   rationale: string
 }
-
-const MOCK_WORKLIST: WorklistItem[] = [
-  {
-    claimId: "wl_1" as Id<"claims">,
-    patientName: "Wilson, James",
-    payerName: "Delta Dental",
-    claimNumber: "CLM-2024-0891",
-    amount: 2450.0,
-    ageDays: 95,
-    score: 92,
-    collectionProbability: 78,
-    rationale:
-      "Critical age (95 days) - timely filing risk; High value ($2,450); Payer Delta Dental high denial rate (18%)",
-  },
-  {
-    claimId: "wl_2" as Id<"claims">,
-    patientName: "Park, Emily",
-    payerName: "Cigna",
-    claimNumber: "CLM-2024-0876",
-    amount: 1875.0,
-    ageDays: 72,
-    score: 85,
-    collectionProbability: 82,
-    rationale:
-      "High age (72 days) - approaching deadline; High value ($1,875); Previous denial on file",
-  },
-  {
-    claimId: "wl_3" as Id<"claims">,
-    patientName: "Chen, David",
-    payerName: "MetLife",
-    claimNumber: "CLM-2024-0854",
-    amount: 3200.0,
-    ageDays: 62,
-    score: 81,
-    collectionProbability: 85,
-    rationale:
-      "Very high value ($3,200); Age 62 days - past first follow-up window; MetLife requires specific documentation",
-  },
-  {
-    claimId: "wl_4" as Id<"claims">,
-    patientName: "Thompson, Sarah",
-    payerName: "Aetna",
-    claimNumber: "CLM-2024-0812",
-    amount: 1425.0,
-    ageDays: 88,
-    score: 78,
-    collectionProbability: 65,
-    rationale:
-      "Near timely filing deadline (88 days); Aetna 90-day filing limit; Moderate value ($1,425)",
-  },
-  {
-    claimId: "wl_5" as Id<"claims">,
-    patientName: "Garcia, Maria",
-    payerName: "Guardian",
-    claimNumber: "CLM-2024-0788",
-    amount: 980.0,
-    ageDays: 105,
-    score: 74,
-    collectionProbability: 52,
-    rationale:
-      "Past 90-day window (105 days); Appeal may be required; Guardian slow processing history",
-  },
-  {
-    claimId: "wl_6" as Id<"claims">,
-    patientName: "Johnson, Robert",
-    payerName: "Delta Dental",
-    claimNumber: "CLM-2024-0745",
-    amount: 750.0,
-    ageDays: 45,
-    score: 62,
-    collectionProbability: 88,
-    rationale:
-      "Moderate age (45 days); Delta Dental high denial rate (18%); Standard follow-up recommended",
-  },
-  {
-    claimId: "wl_7" as Id<"claims">,
-    patientName: "Lee, Susan",
-    payerName: "United Healthcare",
-    claimNumber: "CLM-2024-0698",
-    amount: 1650.0,
-    ageDays: 38,
-    score: 58,
-    collectionProbability: 91,
-    rationale:
-      "High value ($1,650); Age 38 days - approaching second billing cycle; UHC requires pre-auth verification",
-  },
-  {
-    claimId: "wl_8" as Id<"claims">,
-    patientName: "Brown, Michael",
-    payerName: "Cigna",
-    claimNumber: "CLM-2024-0854B",
-    amount: 520.0,
-    ageDays: 52,
-    score: 45,
-    collectionProbability: 75,
-    rationale:
-      "Moderate age (52 days); Lower value ($520); Standard follow-up protocol",
-  },
-  {
-    claimId: "wl_9" as Id<"claims">,
-    patientName: "Anderson, William",
-    payerName: "Aetna",
-    claimNumber: "CLM-2024-0732",
-    amount: 2280.0,
-    ageDays: 108,
-    score: 71,
-    collectionProbability: 42,
-    rationale:
-      "Past filing window (108 days); High value ($2,280); Appeal letter sent — awaiting payer response",
-  },
-  {
-    claimId: "wl_10" as Id<"claims">,
-    patientName: "Kim, Jennifer",
-    payerName: "United Healthcare",
-    claimNumber: "CLM-2024-0775",
-    amount: 1950.0,
-    ageDays: 74,
-    score: 68,
-    collectionProbability: 72,
-    rationale:
-      "Additional documentation requested by payer; High value ($1,950); UHC typically pays after resubmission",
-  },
-  {
-    claimId: "wl_11" as Id<"claims">,
-    patientName: "Rivera, Carlos",
-    payerName: "MetLife",
-    claimNumber: "CLM-2024-0888",
-    amount: 560.0,
-    ageDays: 18,
-    score: 35,
-    collectionProbability: 95,
-    rationale:
-      "Recently submitted (18 days); Lower value ($560); Within normal MetLife processing window",
-  },
-  {
-    claimId: "wl_12" as Id<"claims">,
-    patientName: "Martinez, Ana",
-    payerName: "Aetna",
-    claimNumber: "CLM-2024-0801",
-    amount: 380.0,
-    ageDays: 28,
-    score: 32,
-    collectionProbability: 92,
-    rationale:
-      "Within normal processing window (28 days); Low value ($380); First follow-up not yet due",
-  },
-  {
-    claimId: "wl_13" as Id<"claims">,
-    patientName: "Taylor, Jessica",
-    payerName: "Guardian",
-    claimNumber: "CLM-2024-0820",
-    amount: 1120.0,
-    ageDays: 58,
-    score: 55,
-    collectionProbability: 70,
-    rationale:
-      "Moderate age (58 days); Guardian slow processing (avg 52 days); Follow-up call recommended",
-  },
-  {
-    claimId: "wl_14" as Id<"claims">,
-    patientName: "Moore, Richard",
-    payerName: "Delta Dental",
-    claimNumber: "CLM-2024-0842",
-    amount: 890.0,
-    ageDays: 42,
-    score: 48,
-    collectionProbability: 84,
-    rationale:
-      "Approaching 45-day mark; Delta Dental high denial rate; Standard follow-up window",
-  },
-  {
-    claimId: "wl_15" as Id<"claims">,
-    patientName: "Davis, Patricia",
-    payerName: "MetLife",
-    claimNumber: "CLM-2024-0860",
-    amount: 290.0,
-    ageDays: 15,
-    score: 18,
-    collectionProbability: 97,
-    rationale:
-      "Recently submitted (15 days); Low value ($290); Within standard MetLife processing time",
-  },
-]
 
 type PayerData = {
   payerId: string
@@ -509,129 +106,23 @@ type PayerData = {
   totalPaid: number
   totalOutstanding: number
   flags: string[]
+  claims: { claimNumber: string; patientName: string; amount: number; ageDays: number; status: string }[]
 }
 
-const MOCK_PAYERS: PayerData[] = [
-  {
-    payerId: "p1",
-    payerName: "Delta Dental",
-    totalClaims: 145,
-    paidClaims: 120,
-    deniedClaims: 18,
-    pendingClaims: 7,
-    avgDaysToPay: 32,
-    denialRate: 12.4,
-    appealSuccessRate: 72,
-    totalCharged: 185000,
-    totalPaid: 142000,
-    totalOutstanding: 43000,
-    flags: ["high_denial"],
-  },
-  {
-    payerId: "p2",
-    payerName: "Cigna Dental",
-    totalClaims: 98,
-    paidClaims: 88,
-    deniedClaims: 5,
-    pendingClaims: 5,
-    avgDaysToPay: 48,
-    denialRate: 5.1,
-    appealSuccessRate: 80,
-    totalCharged: 125000,
-    totalPaid: 108000,
-    totalOutstanding: 17000,
-    flags: ["slow"],
-  },
-  {
-    payerId: "p3",
-    payerName: "MetLife",
-    totalClaims: 112,
-    paidClaims: 102,
-    deniedClaims: 6,
-    pendingClaims: 4,
-    avgDaysToPay: 25,
-    denialRate: 5.4,
-    appealSuccessRate: 68,
-    totalCharged: 148000,
-    totalPaid: 132000,
-    totalOutstanding: 16000,
-    flags: [],
-  },
-  {
-    payerId: "p4",
-    payerName: "Aetna",
-    totalClaims: 76,
-    paidClaims: 65,
-    deniedClaims: 8,
-    pendingClaims: 3,
-    avgDaysToPay: 38,
-    denialRate: 10.5,
-    appealSuccessRate: 62,
-    totalCharged: 98000,
-    totalPaid: 78000,
-    totalOutstanding: 20000,
-    flags: ["high_denial"],
-  },
-  {
-    payerId: "p5",
-    payerName: "Guardian",
-    totalClaims: 54,
-    paidClaims: 48,
-    deniedClaims: 3,
-    pendingClaims: 3,
-    avgDaysToPay: 52,
-    denialRate: 5.6,
-    appealSuccessRate: 75,
-    totalCharged: 72000,
-    totalPaid: 61000,
-    totalOutstanding: 11000,
-    flags: ["slow"],
-  },
-  {
-    payerId: "p6",
-    payerName: "United Healthcare",
-    totalClaims: 88,
-    paidClaims: 80,
-    deniedClaims: 4,
-    pendingClaims: 4,
-    avgDaysToPay: 29,
-    denialRate: 4.5,
-    appealSuccessRate: 85,
-    totalCharged: 115000,
-    totalPaid: 102000,
-    totalOutstanding: 13000,
-    flags: [],
-  },
-]
+type AgingBucket = {
+  bucket: string
+  count: number
+  totalAmount: number
+}
 
-// Payer-to-claims mapping for expanded payer view
-const MOCK_PAYER_CLAIMS: Record<string, { claimNumber: string; patientName: string; amount: number; ageDays: number; status: string }[]> = {
-  p1: [
-    { claimNumber: "CLM-2024-0891", patientName: "Wilson, James", amount: 2450, ageDays: 95, status: "escalated" },
-    { claimNumber: "CLM-2024-0745", patientName: "Johnson, Robert", amount: 1850, ageDays: 95, status: "escalated" },
-    { claimNumber: "CLM-2024-0842", patientName: "Moore, Richard", amount: 890, ageDays: 42, status: "pending" },
-  ],
-  p2: [
-    { claimNumber: "CLM-2024-0876", patientName: "Park, Emily", amount: 1875, ageDays: 72, status: "pending" },
-    { claimNumber: "CLM-2024-0698", patientName: "Lee, Susan", amount: 2800, ageDays: 132, status: "escalated" },
-  ],
-  p3: [
-    { claimNumber: "CLM-2024-0854", patientName: "Chen, David", amount: 2100, ageDays: 35, status: "pending" },
-    { claimNumber: "CLM-2024-0888", patientName: "Rivera, Carlos", amount: 560, ageDays: 18, status: "submitted" },
-    { claimNumber: "CLM-2024-0860", patientName: "Davis, Patricia", amount: 290, ageDays: 15, status: "submitted" },
-  ],
-  p4: [
-    { claimNumber: "CLM-2024-0812", patientName: "Thompson, Sarah", amount: 3200, ageDays: 48, status: "in_review" },
-    { claimNumber: "CLM-2024-0732", patientName: "Anderson, William", amount: 2280, ageDays: 108, status: "escalated" },
-  ],
-  p5: [
-    { claimNumber: "CLM-2024-0788", patientName: "Garcia, Maria", amount: 4500, ageDays: 67, status: "pending" },
-    { claimNumber: "CLM-2024-0820", patientName: "Taylor, Jessica", amount: 1120, ageDays: 58, status: "pending" },
-  ],
-  p6: [
-    { claimNumber: "CLM-2024-0775", patientName: "Kim, Jennifer", amount: 1950, ageDays: 74, status: "pending" },
-    { claimNumber: "CLM-2024-0698B", patientName: "Lee, Susan", amount: 1650, ageDays: 38, status: "submitted" },
-  ],
+type AgingData = {
+  insuranceAging: AgingBucket[]
+  patientAging: AgingBucket[]
+  totals: {
+    insurance: number
+    patient: number
+    total: number
+  }
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -698,13 +189,20 @@ function statusBadge(status: string): { variant: "default" | "secondary" | "outl
     case "pending":
       return { variant: "outline", className: "bg-yellow-50 text-yellow-700 border-yellow-200 dark:bg-yellow-950/30 dark:text-yellow-300 dark:border-yellow-800", label: "Pending" }
     case "in_review":
+    case "accepted":
       return { variant: "outline", className: "bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/30 dark:text-purple-300 dark:border-purple-800", label: "In Review" }
     case "escalated":
+    case "appealed":
       return { variant: "outline", className: "bg-red-50 text-red-700 border-red-200 dark:bg-red-950/30 dark:text-red-300 dark:border-red-800", label: "Escalated" }
     case "billed":
+    case "ready":
       return { variant: "outline", className: "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/30 dark:text-blue-300 dark:border-blue-800", label: "Billed" }
     case "collections":
-      return { variant: "outline", className: "bg-red-50 text-red-700 border-red-200 dark:bg-red-950/30 dark:text-red-300 dark:border-red-800", label: "Collections" }
+    case "denied":
+      return { variant: "outline", className: "bg-red-50 text-red-700 border-red-200 dark:bg-red-950/30 dark:text-red-300 dark:border-red-800", label: status === "denied" ? "Denied" : "Collections" }
+    case "draft":
+    case "scrubbing":
+      return { variant: "outline", className: "bg-gray-50 text-gray-700 border-gray-200 dark:bg-gray-950/30 dark:text-gray-300 dark:border-gray-800", label: "Draft" }
     default:
       return { variant: "outline", className: "", label: status }
   }
@@ -770,14 +268,209 @@ function formatDateStr(date: Date): string {
   })
 }
 
+function getBucket(ageDays: number): string {
+  if (ageDays <= 30) return "0-30"
+  if (ageDays <= 60) return "31-60"
+  if (ageDays <= 90) return "61-90"
+  if (ageDays <= 120) return "91-120"
+  return "120+"
+}
+
+// ─── Data computation from Convex claims ─────────────────────────────────
+
+function computeFromClaims(rawClaims: any[], rawPayments: any[]): {
+  agingData: AgingData
+  agingClaims: AgingClaim[]
+  worklistData: WorklistItem[]
+  payerData: PayerData[]
+} {
+  const now = Date.now()
+  const oneDayMs = 1000 * 60 * 60 * 24
+
+  // Build aging claims from pmsClaims
+  const agingClaims: AgingClaim[] = rawClaims
+    .filter((c: any) => c.status !== "paid")
+    .map((c: any) => {
+      const submittedDate = c.submittedDate ?? new Date(c.createdAt).toISOString().split("T")[0]
+      const submittedTs = new Date(submittedDate).getTime()
+      const ageDays = Math.max(0, Math.floor((now - submittedTs) / oneDayMs))
+      const bucket = getBucket(ageDays)
+      // Determine type: if pmsPatientId starts with "self" or has no insurancePlanId, it's patient
+      const isPatient = !c.insurancePlanId
+      const amount = c.totalAmount - (c.paidAmount ?? 0)
+
+      return {
+        _id: c._id ?? c.pmsClaimId ?? `claim-${Math.random().toString(36).slice(2, 8)}`,
+        patientName: c.pmsPatientId ?? "Unknown",
+        payerName: isPatient ? "Self-Pay" : `Payer ${c.insurancePlanId ?? ""}`,
+        claimNumber: c.pmsClaimId ?? c._id ?? "",
+        amount,
+        ageDays,
+        bucket,
+        type: isPatient ? "patient" as const : "insurance" as const,
+        status: c.status ?? "pending",
+        lastAction: c.status === "submitted" ? "Submitted electronically" :
+                    c.status === "accepted" ? "Payer acknowledged receipt" :
+                    c.status === "denied" ? "Denied — review required" :
+                    c.status === "appealed" ? "Appeal filed" :
+                    "Pending review",
+        dateSubmitted: submittedDate,
+      }
+    })
+
+  // Build aging buckets
+  const bucketNames = ["0-30", "31-60", "61-90", "91-120", "120+"]
+  const insuranceClaims = agingClaims.filter(c => c.type === "insurance")
+  const patientClaims = agingClaims.filter(c => c.type === "patient")
+
+  const insuranceAging: AgingBucket[] = bucketNames.map(bucket => {
+    const inBucket = insuranceClaims.filter(c => c.bucket === bucket)
+    return {
+      bucket,
+      count: inBucket.length,
+      totalAmount: inBucket.reduce((s, c) => s + c.amount, 0),
+    }
+  })
+
+  const patientAging: AgingBucket[] = bucketNames.map(bucket => {
+    const inBucket = patientClaims.filter(c => c.bucket === bucket)
+    return {
+      bucket,
+      count: inBucket.length,
+      totalAmount: inBucket.reduce((s, c) => s + c.amount, 0),
+    }
+  })
+
+  const insuranceTotal = insuranceAging.reduce((s, b) => s + b.totalAmount, 0)
+  const patientTotal = patientAging.reduce((s, b) => s + b.totalAmount, 0)
+
+  const agingData: AgingData = {
+    insuranceAging,
+    patientAging,
+    totals: {
+      insurance: insuranceTotal,
+      patient: patientTotal,
+      total: insuranceTotal + patientTotal,
+    },
+  }
+
+  // Build worklist: prioritize claims by age, amount, and status
+  const worklistData: WorklistItem[] = agingClaims
+    .map((c) => {
+      // Score: age contributes 40%, amount 30%, status urgency 30%
+      const ageScore = Math.min(100, (c.ageDays / 120) * 100)
+      const maxAmount = Math.max(...agingClaims.map(x => x.amount), 1)
+      const amountScore = (c.amount / maxAmount) * 100
+      const statusScore = c.status === "denied" || c.status === "appealed" ? 100 :
+                          c.status === "submitted" ? 40 :
+                          c.status === "accepted" ? 30 : 50
+      const score = Math.round(ageScore * 0.4 + amountScore * 0.3 + statusScore * 0.3)
+      const collectionProbability = Math.max(5, Math.min(98, 100 - c.ageDays * 0.6 + (c.amount > 1000 ? 10 : 0)))
+
+      return {
+        claimId: c._id,
+        patientName: c.patientName,
+        payerName: c.payerName,
+        claimNumber: c.claimNumber,
+        amount: c.amount,
+        ageDays: c.ageDays,
+        score,
+        collectionProbability: Math.round(collectionProbability),
+        rationale: `Age ${c.ageDays} days; ${c.amount > 1000 ? "High" : "Moderate"} value (${formatCurrencyFull(c.amount)}); Status: ${c.status}`,
+      }
+    })
+    .sort((a, b) => b.score - a.score)
+
+  // Build payer analysis by grouping claims
+  const payerMap = new Map<string, { claims: any[]; payments: any[] }>()
+  for (const claim of rawClaims) {
+    const key = claim.insurancePlanId ? String(claim.insurancePlanId) : "self-pay"
+    if (!payerMap.has(key)) payerMap.set(key, { claims: [], payments: [] })
+    payerMap.get(key)!.claims.push(claim)
+  }
+  for (const payment of rawPayments) {
+    // Try to associate payments with payers via pmsClaimId
+    if (payment.pmsClaimId) {
+      const matchedClaim = rawClaims.find((c: any) => c.pmsClaimId === payment.pmsClaimId)
+      if (matchedClaim) {
+        const key = matchedClaim.insurancePlanId ? String(matchedClaim.insurancePlanId) : "self-pay"
+        if (payerMap.has(key)) {
+          payerMap.get(key)!.payments.push(payment)
+        }
+      }
+    }
+  }
+
+  const payerData: PayerData[] = Array.from(payerMap.entries())
+    .filter(([key]) => key !== "self-pay")
+    .map(([key, data]) => {
+      const totalClaims = data.claims.length
+      const paidClaims = data.claims.filter((c: any) => c.status === "paid").length
+      const deniedClaims = data.claims.filter((c: any) => c.status === "denied").length
+      const pendingClaims = totalClaims - paidClaims - deniedClaims
+      const totalCharged = data.claims.reduce((s: number, c: any) => s + (c.totalAmount ?? 0), 0)
+      const totalPaid = data.payments.reduce((s: number, p: any) => s + (p.amount ?? 0), 0)
+      const totalOutstanding = totalCharged - totalPaid
+
+      // Avg days to pay: for paid claims, use submittedDate to paidAmount date
+      const paidClaimsArr = data.claims.filter((c: any) => c.status === "paid" && c.submittedDate)
+      const avgDaysToPay = paidClaimsArr.length > 0
+        ? Math.round(paidClaimsArr.reduce((sum: number, c: any) => {
+            const submitted = new Date(c.submittedDate).getTime()
+            const paid = c.updatedAt ?? now
+            return sum + Math.max(0, (paid - submitted) / oneDayMs)
+          }, 0) / paidClaimsArr.length)
+        : 30
+
+      const denialRate = totalClaims > 0 ? (deniedClaims / totalClaims) * 100 : 0
+      const flags: string[] = []
+      if (denialRate >= 10) flags.push("high_denial")
+      if (avgDaysToPay >= 45) flags.push("slow")
+
+      // Open claims for this payer
+      const openClaimsForPayer = data.claims
+        .filter((c: any) => c.status !== "paid")
+        .slice(0, 5)
+        .map((c: any) => {
+          const submittedDate = c.submittedDate ?? new Date(c.createdAt).toISOString().split("T")[0]
+          const submittedTs = new Date(submittedDate).getTime()
+          const ageDays = Math.max(0, Math.floor((now - submittedTs) / oneDayMs))
+          return {
+            claimNumber: c.pmsClaimId ?? c._id ?? "",
+            patientName: c.pmsPatientId ?? "Unknown",
+            amount: c.totalAmount - (c.paidAmount ?? 0),
+            ageDays,
+            status: c.status ?? "pending",
+          }
+        })
+
+      return {
+        payerId: key,
+        payerName: `Payer ${key}`,
+        totalClaims,
+        paidClaims,
+        deniedClaims,
+        pendingClaims,
+        avgDaysToPay,
+        denialRate,
+        appealSuccessRate: 70, // Would need appeal data for real calculation
+        totalCharged,
+        totalPaid,
+        totalOutstanding,
+        flags,
+        claims: openClaimsForPayer,
+      }
+    })
+
+  return { agingData, agingClaims, worklistData, payerData }
+}
+
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export default function ArPage() {
   const [activeTab, setActiveTab] = useState("aging")
-  const [convexError, setConvexError] = useState(false)
 
   // Aging state
-  const [expandedBuckets, setExpandedBuckets] = useState<Set<string>>(new Set())
   const [agingFilter, setAgingFilter] = useState<"all" | "insurance" | "patient">("all")
   const [agingBucketFilter, setAgingBucketFilter] = useState<string>("all")
   const [agingSearch, setAgingSearch] = useState("")
@@ -797,50 +490,65 @@ export default function ArPage() {
   const [expandedPayers, setExpandedPayers] = useState<Set<string>>(new Set())
   const [payerSearch, setPayerSearch] = useState("")
 
-  // Try Convex, fall back to mock data
-  let agingData = MOCK_AGING
-  let agingClaims = MOCK_AGING_CLAIMS
-  let worklistData = MOCK_WORKLIST
-  let payerData = MOCK_PAYERS
+  // Fetch data from Convex
+  const rawClaims = useQuery((api as any).pmsClaims.queries.list, {})
+  const rawPayments = useQuery((api as any).pmsPayments.queries.list, {})
 
-  try {
-    // eslint-disable-next-line react-hooks/rules-of-hooks
-    const arResult = useQuery(api.ar.queries.getAging)
-    if (arResult) {
-      agingData = arResult as typeof MOCK_AGING
-    }
-  } catch {
-    if (!convexError) setConvexError(true)
+  // Loading state
+  if (rawClaims === undefined || rawPayments === undefined) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">A/R Management</h1>
+          <p className="text-muted-foreground">
+            Accounts receivable aging, AI-prioritized worklists, and payer
+            performance analysis. Target: insurance A/R under 30 days.
+          </p>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="h-28 bg-muted animate-pulse rounded-lg" />
+          ))}
+        </div>
+        <div className="space-y-3">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="h-24 bg-muted animate-pulse rounded-lg" />
+          ))}
+        </div>
+      </div>
+    )
   }
 
-  try {
-    // eslint-disable-next-line react-hooks/rules-of-hooks
-    const wlResult = useQuery(api.ar.queries.getWorklist)
-    if (wlResult) {
-      worklistData = wlResult as typeof MOCK_WORKLIST
-    }
-  } catch {
-    // silently fall back
+  // Empty state
+  if (rawClaims.length === 0) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">A/R Management</h1>
+          <p className="text-muted-foreground">
+            Accounts receivable aging, AI-prioritized worklists, and payer
+            performance analysis. Target: insurance A/R under 30 days.
+          </p>
+        </div>
+        <DataEmptyState resource="claims" />
+      </div>
+    )
   }
 
-  try {
-    // eslint-disable-next-line react-hooks/rules-of-hooks
-    const payerResult = useQuery(api.ar.queries.getPayerAnalysis)
-    if (payerResult) {
-      payerData = payerResult as typeof MOCK_PAYERS
-    }
-  } catch {
-    // silently fall back
-  }
+  // Compute all derived data from raw claims + payments
+  const { agingData, agingClaims, worklistData, payerData } = computeFromClaims(
+    rawClaims as any[],
+    rawPayments as any[]
+  )
 
   // ─── Computed ────────────────────────────────────────────────────────────
 
-  const maxAgingAmount = useMemo(() => {
+  const maxAgingAmount = (() => {
     const allAmounts = agingData.insuranceAging.map((b, i) => b.totalAmount + agingData.patientAging[i].totalAmount)
-    return Math.max(...allAmounts)
-  }, [agingData])
+    return Math.max(...allAmounts, 1)
+  })()
 
-  const avgDaysOutstanding = useMemo(() => {
+  const avgDaysOutstanding = (() => {
     const totalWeightedDays =
       agingData.insuranceAging.reduce((sum, b) => {
         const midpoint =
@@ -856,9 +564,9 @@ export default function ArPage() {
       agingData.insuranceAging.reduce((sum, b) => sum + b.count, 0) +
       agingData.patientAging.reduce((sum, b) => sum + b.count, 0)
     return totalCount > 0 ? Math.round(totalWeightedDays / totalCount) : 0
-  }, [agingData])
+  })()
 
-  const filteredAgingClaims = useMemo(() => {
+  const filteredAgingClaims = (() => {
     let claims = agingClaims
     if (agingFilter !== "all") {
       claims = claims.filter((c) => c.type === agingFilter)
@@ -876,9 +584,9 @@ export default function ArPage() {
       )
     }
     return claims
-  }, [agingClaims, agingFilter, agingBucketFilter, agingSearch])
+  })()
 
-  const sortedWorklist = useMemo(() => {
+  const sortedWorklist = (() => {
     let items = [...worklistData]
     if (worklistSearch) {
       const q = worklistSearch.toLowerCase()
@@ -895,35 +603,23 @@ export default function ArPage() {
       return b.amount - a.amount
     })
     return items
-  }, [worklistData, worklistSearch, worklistSort])
+  })()
 
-  const filteredPayers = useMemo(() => {
+  const filteredPayers = (() => {
     if (!payerSearch) return payerData
     const q = payerSearch.toLowerCase()
     return payerData.filter((p) => p.payerName.toLowerCase().includes(q))
-  }, [payerData, payerSearch])
+  })()
 
-  const payerSummary = useMemo(() => {
+  const payerSummary = (() => {
     const totalPayers = payerData.length
     const avgDenialRate =
-      payerData.reduce((sum, p) => sum + p.denialRate, 0) / totalPayers
+      totalPayers > 0 ? payerData.reduce((sum, p) => sum + p.denialRate, 0) / totalPayers : 0
     const flaggedCount = payerData.filter((p) => p.flags.length > 0).length
     return { totalPayers, avgDenialRate, flaggedCount }
-  }, [payerData])
+  })()
 
   // ─── Handlers ────────────────────────────────────────────────────────────
-
-  function toggleBucket(bucket: string) {
-    setExpandedBuckets((prev) => {
-      const next = new Set(prev)
-      if (next.has(bucket)) {
-        next.delete(bucket)
-      } else {
-        next.add(bucket)
-      }
-      return next
-    })
-  }
 
   function togglePayer(payerId: string) {
     setExpandedPayers((prev) => {
@@ -960,16 +656,6 @@ export default function ArPage() {
           performance analysis. Target: insurance A/R under 30 days.
         </p>
       </div>
-
-      {convexError && (
-        <Card className="border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/30">
-          <CardContent className="pt-6">
-            <p className="text-sm text-amber-800 dark:text-amber-200">
-              Convex backend is not connected. Displaying mock data for preview.
-            </p>
-          </CardContent>
-        </Card>
-      )}
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList>
@@ -1613,13 +1299,12 @@ export default function ArPage() {
                       filteredPayers.map((payer) => {
                         const isExpanded = expandedPayers.has(payer.payerId)
                         const sb = payerStatusBadge(payer)
-                        const payerClaims = MOCK_PAYER_CLAIMS[payer.payerId] ?? []
                         return (
                           <PayerRow
                             key={payer.payerId}
                             payer={payer}
                             statusBadge={sb}
-                            claims={payerClaims}
+                            claims={payer.claims}
                             isExpanded={isExpanded}
                             onToggle={() => togglePayer(payer.payerId)}
                           />

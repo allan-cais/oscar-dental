@@ -1,6 +1,7 @@
 import { query } from "../_generated/server";
 import { v } from "convex/values";
 import { computeEntryHash } from "../lib/audit";
+import { getOrgId } from "../lib/auth";
 
 // ---------------------------------------------------------------------------
 // Audit Log — Query Functions
@@ -27,39 +28,22 @@ export const list = query({
     endTime: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) {
-      throw new Error("Unauthenticated");
-    }
-
-    // Resolve orgId
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let orgId: string | undefined = (identity as any).org_id ?? (identity as any).orgId;
-    if (!orgId) {
-      const userRow = await ctx.db
-        .query("users")
-        .withIndex("by_clerk_id", (q) => q.eq("clerkUserId", identity.subject))
-        .first();
-      orgId = userRow?.orgId;
-    }
-    if (!orgId) {
-      throw new Error("Unable to resolve organization");
-    }
+    const orgId = await getOrgId(ctx);
 
     // Pick the best index based on supplied filters.
     let baseQuery;
     if (args.userId) {
       baseQuery = ctx.db
         .query("auditLogs")
-        .withIndex("by_user", (q) => q.eq("orgId", orgId as string).eq("userId", args.userId as string));
+        .withIndex("by_user", (q) => q.eq("orgId", orgId).eq("userId", args.userId as string));
     } else if (args.action) {
       baseQuery = ctx.db
         .query("auditLogs")
-        .withIndex("by_action", (q) => q.eq("orgId", orgId as string).eq("action", args.action as string));
+        .withIndex("by_action", (q) => q.eq("orgId", orgId).eq("action", args.action as string));
     } else {
       baseQuery = ctx.db
         .query("auditLogs")
-        .withIndex("by_org_time", (q) => q.eq("orgId", orgId as string));
+        .withIndex("by_org_time", (q) => q.eq("orgId", orgId));
     }
 
     // Order newest-first.
@@ -97,29 +81,13 @@ export const getByResource = query({
     resourceId: v.string(),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) {
-      throw new Error("Unauthenticated");
-    }
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let orgId: string | undefined = (identity as any).org_id ?? (identity as any).orgId;
-    if (!orgId) {
-      const userRow = await ctx.db
-        .query("users")
-        .withIndex("by_clerk_id", (q) => q.eq("clerkUserId", identity.subject))
-        .first();
-      orgId = userRow?.orgId;
-    }
-    if (!orgId) {
-      throw new Error("Unable to resolve organization");
-    }
+    const orgId = await getOrgId(ctx);
 
     const entries = await ctx.db
       .query("auditLogs")
       .withIndex("by_resource", (q) =>
         q
-          .eq("orgId", orgId as string)
+          .eq("orgId", orgId)
           .eq("resourceType", args.resourceType)
           .eq("resourceId", args.resourceId),
       )
@@ -143,28 +111,12 @@ export const verifyChain = query({
     endTime: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) {
-      throw new Error("Unauthenticated");
-    }
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let orgId: string | undefined = (identity as any).org_id ?? (identity as any).orgId;
-    if (!orgId) {
-      const userRow = await ctx.db
-        .query("users")
-        .withIndex("by_clerk_id", (q) => q.eq("clerkUserId", identity.subject))
-        .first();
-      orgId = userRow?.orgId;
-    }
-    if (!orgId) {
-      throw new Error("Unable to resolve organization");
-    }
+    const orgId = await getOrgId(ctx);
 
     // Fetch entries in chronological order (oldest first).
     const entries = await ctx.db
       .query("auditLogs")
-      .withIndex("by_org_time", (q) => q.eq("orgId", orgId as string))
+      .withIndex("by_org_time", (q) => q.eq("orgId", orgId))
       .order("asc")
       .collect();
 

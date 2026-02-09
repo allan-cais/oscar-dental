@@ -1,6 +1,8 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useMemo } from "react"
+import { useQuery } from "convex/react"
+import { api } from "../../../../../convex/_generated/api"
 import {
   Shield,
   CheckCircle,
@@ -29,7 +31,7 @@ import {
 import { CobPrompt } from "@/components/rcm/cob-prompt"
 
 // ---------------------------------------------------------------------------
-// Demo data
+// Demo result for the verify patient feature (simulated real-time check)
 // ---------------------------------------------------------------------------
 
 const DEMO_RESULT: EligibilityResultData = {
@@ -55,29 +57,7 @@ const DEMO_RESULT: EligibilityResultData = {
   patientName: "Sarah Mitchell",
 }
 
-interface RecentVerification {
-  id: string
-  patientName: string
-  payerName: string
-  status: "active" | "inactive" | "error" | "pending"
-  verifiedAt: string
-  method: "Real-time" | "Batch"
-}
-
-const RECENT_VERIFICATIONS: RecentVerification[] = [
-  { id: "1", patientName: "Sarah Mitchell", payerName: "Delta Dental PPO", status: "active", verifiedAt: "Today 9:42 AM", method: "Real-time" },
-  { id: "2", patientName: "Robert Chen", payerName: "Cigna DPPO", status: "active", verifiedAt: "Today 9:38 AM", method: "Real-time" },
-  { id: "3", patientName: "Maria Garcia", payerName: "MetLife PDP", status: "active", verifiedAt: "Today 9:15 AM", method: "Batch" },
-  { id: "4", patientName: "James Wilson", payerName: "Aetna DMO", status: "inactive", verifiedAt: "Today 8:55 AM", method: "Real-time" },
-  { id: "5", patientName: "Emily Johnson", payerName: "Guardian PPO", status: "active", verifiedAt: "Today 8:30 AM", method: "Batch" },
-  { id: "6", patientName: "David Park", payerName: "Delta Dental Premier", status: "error", verifiedAt: "Today 8:12 AM", method: "Real-time" },
-  { id: "7", patientName: "Lisa Thompson", payerName: "United Concordia", status: "active", verifiedAt: "Today 7:45 AM", method: "Batch" },
-  { id: "8", patientName: "Michael Brown", payerName: "Humana PPO", status: "active", verifiedAt: "Today 7:20 AM", method: "Batch" },
-  { id: "9", patientName: "Jennifer Davis", payerName: "BlueCross PPO", status: "pending", verifiedAt: "Today 6:50 AM", method: "Batch" },
-  { id: "10", patientName: "Kevin Martinez", payerName: "Cigna DHMO", status: "active", verifiedAt: "Today 5:30 AM", method: "Batch" },
-]
-
-function statusBadge(status: RecentVerification["status"]) {
+function statusBadge(status: string) {
   switch (status) {
     case "active":
       return (
@@ -107,10 +87,12 @@ function statusBadge(status: RecentVerification["status"]) {
           Pending
         </Badge>
       )
+    default:
+      return null
   }
 }
 
-function methodBadge(method: RecentVerification["method"]) {
+function methodBadge(method: string) {
   return method === "Real-time" ? (
     <Badge variant="outline" className="text-xs">
       <RefreshCw className="size-3" />
@@ -125,31 +107,6 @@ function methodBadge(method: RecentVerification["method"]) {
 }
 
 // ---------------------------------------------------------------------------
-// Stats
-// ---------------------------------------------------------------------------
-
-const STATS = [
-  {
-    label: "Verified Today",
-    value: "47",
-    icon: CheckCircle,
-    iconColor: "text-emerald-500",
-  },
-  {
-    label: "Pending Verification",
-    value: "12",
-    icon: Clock,
-    iconColor: "text-amber-500",
-  },
-  {
-    label: "Failed / Error",
-    value: "3",
-    icon: AlertTriangle,
-    iconColor: "text-red-500",
-  },
-]
-
-// ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
@@ -159,6 +116,20 @@ export default function EligibilityPage() {
   const [verifying, setVerifying] = useState(false)
   const [selectedRow, setSelectedRow] = useState<string | null>(null)
   const [cobOpen, setCobOpen] = useState(false)
+
+  // Convex queries
+  const recentVerifications = useQuery((api as any).eligibility.queries.list) ?? []
+
+  const stats = useMemo(() => {
+    const active = recentVerifications.filter((v: any) => v.status === "active").length
+    const pending = recentVerifications.filter((v: any) => v.status === "pending").length
+    const error = recentVerifications.filter((v: any) => v.status === "error").length
+    return [
+      { label: "Verified Today", value: String(recentVerifications.length), icon: CheckCircle, iconColor: "text-emerald-500" },
+      { label: "Pending Verification", value: String(pending), icon: Clock, iconColor: "text-amber-500" },
+      { label: "Failed / Error", value: String(error), icon: AlertTriangle, iconColor: "text-red-500" },
+    ]
+  }, [recentVerifications])
 
   function handleVerify() {
     if (!searchTerm.trim()) return
@@ -171,8 +142,8 @@ export default function EligibilityPage() {
     }, 1200)
   }
 
-  const selectedVerification = RECENT_VERIFICATIONS.find(
-    (v) => v.id === selectedRow
+  const selectedVerification = recentVerifications.find(
+    (v: any) => v.id === selectedRow
   )
 
   return (
@@ -190,7 +161,7 @@ export default function EligibilityPage() {
 
       {/* Stats bar */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {STATS.map((stat) => (
+        {stats.map((stat) => (
           <Card key={stat.label}>
             <CardContent className="flex items-center gap-4 pt-0">
               <div className={`rounded-lg bg-muted p-2.5 ${stat.iconColor}`}>
@@ -300,7 +271,7 @@ export default function EligibilityPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {RECENT_VERIFICATIONS.map((row) => (
+                  {recentVerifications.map((row: any) => (
                     <TableRow
                       key={row.id}
                       className="cursor-pointer"
@@ -326,6 +297,13 @@ export default function EligibilityPage() {
                       </TableCell>
                     </TableRow>
                   ))}
+                  {recentVerifications.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={3} className="py-8 text-center text-muted-foreground">
+                        No recent verifications found.
+                      </TableCell>
+                    </TableRow>
+                  )}
                 </TableBody>
               </Table>
             </CardContent>

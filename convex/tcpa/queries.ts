@@ -191,3 +191,91 @@ export const getComplianceStats = query({
     };
   },
 });
+
+/**
+ * List all patients with their aggregated consent status.
+ * Groups communicationConsents by patient and derives per-channel consent flags.
+ */
+export const listConsents = query({
+  args: {},
+  handler: async (ctx) => {
+    const orgId = await getOrgId(ctx);
+
+    const allConsents = await ctx.db
+      .query("communicationConsents")
+      .withIndex("by_org", (q: any) => q.eq("orgId", orgId))
+      .collect();
+
+    // Group by patientId
+    const grouped: Record<string, any[]> = {};
+    for (const c of allConsents) {
+      const pid = c.patientId as string;
+      if (!grouped[pid]) grouped[pid] = [];
+      grouped[pid].push(c);
+    }
+
+    const sourceMap: Record<string, string> = {
+      patient_portal: "web_form",
+      sms_reply: "sms_optin",
+      front_desk: "phone",
+    };
+
+    const results: Array<{
+      id: string;
+      name: string;
+      smsConsent: boolean;
+      emailConsent: boolean;
+      voiceConsent: boolean;
+      messagePrefs: string[];
+      lastUpdated: string;
+      source: string;
+    }> = [];
+
+    for (const [patientId, consents] of Object.entries(grouped)) {
+      const patient = await ctx.db.get(patientId as any) as any;
+      const name = patient
+        ? `${patient.firstName ?? ""} ${patient.lastName ?? ""}`.trim()
+        : "Unknown";
+
+      const active = consents.filter((c: any) => c.consented && !c.revokedAt);
+
+      const smsConsent = active.some((c: any) => c.channel === "sms");
+      const emailConsent = active.some((c: any) => c.channel === "email");
+      const voiceConsent = active.some((c: any) => c.channel === "phone");
+
+      const prefsSet = new Set<string>();
+      for (const c of active) {
+        const mt = c.messageType === "reminders" ? "appt_reminders" : c.messageType;
+        prefsSet.add(mt);
+      }
+
+      // Find most recent consent record
+      let latestTimestamp = 0;
+      let latestSource = "";
+      for (const c of consents) {
+        if (c.consentTimestamp > latestTimestamp) {
+          latestTimestamp = c.consentTimestamp;
+          latestSource = c.consentSource;
+        }
+      }
+
+      const friendlySource = sourceMap[latestSource] ?? (latestSource || "paper");
+
+      results.push({
+        id: patientId,
+        name,
+        smsConsent,
+        emailConsent,
+        voiceConsent,
+        messagePrefs: Array.from(prefsSet),
+        lastUpdated: latestTimestamp
+          ? new Date(latestTimestamp).toISOString()
+          : "",
+        source: friendlySource,
+      });
+    }
+
+    results.sort((a, b) => a.name.localeCompare(b.name));
+    return results;
+  },
+});

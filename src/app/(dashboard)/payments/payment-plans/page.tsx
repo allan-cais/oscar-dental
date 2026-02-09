@@ -1,10 +1,10 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, Fragment } from "react"
 import { useQuery, useMutation } from "convex/react"
 import { api } from "../../../../../convex/_generated/api"
-import type { Id } from "../../../../../convex/_generated/dataModel"
-import { format, addDays, addWeeks } from "date-fns"
+import { format, addWeeks } from "date-fns"
+import { DataEmptyState } from "@/components/ui/data-empty-state"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -71,30 +71,37 @@ import {
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 type PlanStatus = "active" | "completed" | "defaulted" | "cancelled"
-type InstallmentStatus = "paid" | "pending" | "overdue" | "failed"
+type InstallmentStatus = "paid" | "pending" | "overdue" | "failed" | "skipped"
 type Cadence = "weekly" | "biweekly" | "monthly"
 
 interface Installment {
-  date: string
+  number?: number
+  date?: string
+  dueDate?: string
   amount: number
   status: InstallmentStatus
   paidDate?: string
+  paidAt?: number
+  paymentId?: string
 }
 
 interface PaymentPlan {
   _id: string
-  patientName: string
+  patientName?: string
   patientId: string
   totalAmount: number
-  remaining: number
-  installmentsPaid: number
-  installmentsTotal: number
+  remaining?: number
+  remainingAmount?: number
+  installmentAmount?: number
+  installmentsPaid?: number
+  installmentsTotal?: number
   cadence: Cadence
-  nextPaymentDate: string
+  nextPaymentDate?: string
+  nextChargeDate?: string
   status: PlanStatus
   cardOnFile?: { last4: string; brand: string }
   installments: Installment[]
-  createdAt: string
+  createdAt: number | string
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -108,6 +115,14 @@ function formatCurrency(amount: number): string {
 
 function formatDateStr(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  })
+}
+
+function formatTimestamp(ts: number): string {
+  return new Date(ts).toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
     year: "numeric",
@@ -148,6 +163,8 @@ function installmentBadgeClass(status: InstallmentStatus): string {
       return "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400"
     case "failed":
       return "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400"
+    case "skipped":
+      return "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400"
   }
 }
 
@@ -185,277 +202,24 @@ function generateInstallments(
   return installments
 }
 
-// ─── Mock Patients ──────────────────────────────────────────────────────────
-
-const MOCK_PATIENTS = [
-  { id: "pat_1", name: "Maria Garcia" },
-  { id: "pat_2", name: "James Wilson" },
-  { id: "pat_3", name: "Robert Chen" },
-  { id: "pat_4", name: "Emily Thompson" },
-  { id: "pat_5", name: "David Martinez" },
-  { id: "pat_6", name: "Sarah Kim" },
-  { id: "pat_7", name: "Michael Brown" },
-  { id: "pat_8", name: "Jennifer Lee" },
-  { id: "pat_9", name: "Christopher Davis" },
-  { id: "pat_10", name: "Amanda Patel" },
-]
-
-// ─── Mock Plans ─────────────────────────────────────────────────────────────
-
-const MOCK_PLANS: PaymentPlan[] = [
-  {
-    _id: "plan_1",
-    patientName: "Maria Garcia",
-    patientId: "pat_1",
-    totalAmount: 3600,
-    remaining: 2400,
-    installmentsPaid: 4,
-    installmentsTotal: 12,
-    cadence: "monthly",
-    nextPaymentDate: "2026-03-01",
-    status: "active",
-    cardOnFile: { last4: "4242", brand: "Visa" },
-    createdAt: "2025-11-01",
-    installments: [
-      { date: "2025-11-01", amount: 300, status: "paid", paidDate: "2025-11-01" },
-      { date: "2025-12-01", amount: 300, status: "paid", paidDate: "2025-12-01" },
-      { date: "2026-01-01", amount: 300, status: "paid", paidDate: "2026-01-02" },
-      { date: "2026-02-01", amount: 300, status: "paid", paidDate: "2026-02-01" },
-      { date: "2026-03-01", amount: 300, status: "pending" },
-      { date: "2026-04-01", amount: 300, status: "pending" },
-      { date: "2026-05-01", amount: 300, status: "pending" },
-      { date: "2026-06-01", amount: 300, status: "pending" },
-      { date: "2026-07-01", amount: 300, status: "pending" },
-      { date: "2026-08-01", amount: 300, status: "pending" },
-      { date: "2026-09-01", amount: 300, status: "pending" },
-      { date: "2026-10-01", amount: 300, status: "pending" },
-    ],
-  },
-  {
-    _id: "plan_2",
-    patientName: "James Wilson",
-    patientId: "pat_2",
-    totalAmount: 1500,
-    remaining: 750,
-    installmentsPaid: 3,
-    installmentsTotal: 6,
-    cadence: "monthly",
-    nextPaymentDate: "2026-03-15",
-    status: "active",
-    cardOnFile: { last4: "8910", brand: "Mastercard" },
-    createdAt: "2025-09-15",
-    installments: [
-      { date: "2025-09-15", amount: 250, status: "paid", paidDate: "2025-09-15" },
-      { date: "2025-10-15", amount: 250, status: "paid", paidDate: "2025-10-15" },
-      { date: "2025-11-15", amount: 250, status: "paid", paidDate: "2025-11-16" },
-      { date: "2025-12-15", amount: 250, status: "pending" },
-      { date: "2026-01-15", amount: 250, status: "pending" },
-      { date: "2026-02-15", amount: 250, status: "pending" },
-    ],
-  },
-  {
-    _id: "plan_3",
-    patientName: "Robert Chen",
-    patientId: "pat_3",
-    totalAmount: 4800,
-    remaining: 4000,
-    installmentsPaid: 2,
-    installmentsTotal: 12,
-    cadence: "biweekly",
-    nextPaymentDate: "2026-02-14",
-    status: "active",
-    createdAt: "2026-01-03",
-    installments: [
-      { date: "2026-01-03", amount: 400, status: "paid", paidDate: "2026-01-03" },
-      { date: "2026-01-17", amount: 400, status: "paid", paidDate: "2026-01-17" },
-      { date: "2026-01-31", amount: 400, status: "overdue" },
-      { date: "2026-02-14", amount: 400, status: "pending" },
-      { date: "2026-02-28", amount: 400, status: "pending" },
-      { date: "2026-03-14", amount: 400, status: "pending" },
-      { date: "2026-03-28", amount: 400, status: "pending" },
-      { date: "2026-04-11", amount: 400, status: "pending" },
-      { date: "2026-04-25", amount: 400, status: "pending" },
-      { date: "2026-05-09", amount: 400, status: "pending" },
-      { date: "2026-05-23", amount: 400, status: "pending" },
-      { date: "2026-06-06", amount: 400, status: "pending" },
-    ],
-  },
-  {
-    _id: "plan_4",
-    patientName: "Emily Thompson",
-    patientId: "pat_4",
-    totalAmount: 900,
-    remaining: 600,
-    installmentsPaid: 1,
-    installmentsTotal: 3,
-    cadence: "monthly",
-    nextPaymentDate: "2026-02-20",
-    status: "active",
-    cardOnFile: { last4: "3456", brand: "Amex" },
-    createdAt: "2026-01-20",
-    installments: [
-      { date: "2026-01-20", amount: 300, status: "paid", paidDate: "2026-01-20" },
-      { date: "2026-02-20", amount: 300, status: "pending" },
-      { date: "2026-03-20", amount: 300, status: "pending" },
-    ],
-  },
-  {
-    _id: "plan_5",
-    patientName: "David Martinez",
-    patientId: "pat_5",
-    totalAmount: 2400,
-    remaining: 1600,
-    installmentsPaid: 2,
-    installmentsTotal: 6,
-    cadence: "biweekly",
-    nextPaymentDate: "2026-02-08",
-    status: "active",
-    createdAt: "2025-12-14",
-    installments: [
-      { date: "2025-12-14", amount: 400, status: "paid", paidDate: "2025-12-14" },
-      { date: "2025-12-28", amount: 400, status: "paid", paidDate: "2025-12-29" },
-      { date: "2026-01-11", amount: 400, status: "overdue" },
-      { date: "2026-01-25", amount: 400, status: "pending" },
-      { date: "2026-02-08", amount: 400, status: "pending" },
-      { date: "2026-02-22", amount: 400, status: "pending" },
-    ],
-  },
-  {
-    _id: "plan_6",
-    patientName: "Sarah Kim",
-    patientId: "pat_6",
-    totalAmount: 5000,
-    remaining: 2500,
-    installmentsPaid: 5,
-    installmentsTotal: 10,
-    cadence: "weekly",
-    nextPaymentDate: "2026-02-10",
-    status: "active",
-    cardOnFile: { last4: "7890", brand: "Visa" },
-    createdAt: "2026-01-06",
-    installments: [
-      { date: "2026-01-06", amount: 500, status: "paid", paidDate: "2026-01-06" },
-      { date: "2026-01-13", amount: 500, status: "paid", paidDate: "2026-01-13" },
-      { date: "2026-01-20", amount: 500, status: "paid", paidDate: "2026-01-20" },
-      { date: "2026-01-27", amount: 500, status: "paid", paidDate: "2026-01-27" },
-      { date: "2026-02-03", amount: 500, status: "paid", paidDate: "2026-02-03" },
-      { date: "2026-02-10", amount: 500, status: "pending" },
-      { date: "2026-02-17", amount: 500, status: "pending" },
-      { date: "2026-02-24", amount: 500, status: "pending" },
-      { date: "2026-03-03", amount: 500, status: "pending" },
-      { date: "2026-03-10", amount: 500, status: "pending" },
-    ],
-  },
-  {
-    _id: "plan_7",
-    patientName: "Michael Brown",
-    patientId: "pat_7",
-    totalAmount: 1800,
-    remaining: 0,
-    installmentsPaid: 6,
-    installmentsTotal: 6,
-    cadence: "monthly",
-    nextPaymentDate: "",
-    status: "completed",
-    cardOnFile: { last4: "1234", brand: "Visa" },
-    createdAt: "2025-07-01",
-    installments: [
-      { date: "2025-07-01", amount: 300, status: "paid", paidDate: "2025-07-01" },
-      { date: "2025-08-01", amount: 300, status: "paid", paidDate: "2025-08-01" },
-      { date: "2025-09-01", amount: 300, status: "paid", paidDate: "2025-09-02" },
-      { date: "2025-10-01", amount: 300, status: "paid", paidDate: "2025-10-01" },
-      { date: "2025-11-01", amount: 300, status: "paid", paidDate: "2025-11-01" },
-      { date: "2025-12-01", amount: 300, status: "paid", paidDate: "2025-12-01" },
-    ],
-  },
-  {
-    _id: "plan_8",
-    patientName: "Jennifer Lee",
-    patientId: "pat_8",
-    totalAmount: 2000,
-    remaining: 0,
-    installmentsPaid: 9,
-    installmentsTotal: 9,
-    cadence: "monthly",
-    nextPaymentDate: "",
-    status: "completed",
-    createdAt: "2025-04-15",
-    installments: [
-      { date: "2025-04-15", amount: 222.22, status: "paid", paidDate: "2025-04-15" },
-      { date: "2025-05-15", amount: 222.22, status: "paid", paidDate: "2025-05-15" },
-      { date: "2025-06-15", amount: 222.22, status: "paid", paidDate: "2025-06-16" },
-      { date: "2025-07-15", amount: 222.22, status: "paid", paidDate: "2025-07-15" },
-      { date: "2025-08-15", amount: 222.22, status: "paid", paidDate: "2025-08-15" },
-      { date: "2025-09-15", amount: 222.22, status: "paid", paidDate: "2025-09-15" },
-      { date: "2025-10-15", amount: 222.22, status: "paid", paidDate: "2025-10-15" },
-      { date: "2025-11-15", amount: 222.22, status: "paid", paidDate: "2025-11-15" },
-      { date: "2025-12-15", amount: 222.24, status: "paid", paidDate: "2025-12-15" },
-    ],
-  },
-  {
-    _id: "plan_9",
-    patientName: "Christopher Davis",
-    patientId: "pat_9",
-    totalAmount: 3200,
-    remaining: 2400,
-    installmentsPaid: 2,
-    installmentsTotal: 8,
-    cadence: "monthly",
-    nextPaymentDate: "",
-    status: "defaulted",
-    createdAt: "2025-08-01",
-    installments: [
-      { date: "2025-08-01", amount: 400, status: "paid", paidDate: "2025-08-01" },
-      { date: "2025-09-01", amount: 400, status: "paid", paidDate: "2025-09-03" },
-      { date: "2025-10-01", amount: 400, status: "failed" },
-      { date: "2025-11-01", amount: 400, status: "failed" },
-      { date: "2025-12-01", amount: 400, status: "failed" },
-      { date: "2026-01-01", amount: 400, status: "pending" },
-      { date: "2026-02-01", amount: 400, status: "pending" },
-      { date: "2026-03-01", amount: 400, status: "pending" },
-    ],
-  },
-  {
-    _id: "plan_10",
-    patientName: "Amanda Patel",
-    patientId: "pat_10",
-    totalAmount: 750,
-    remaining: 500,
-    installmentsPaid: 1,
-    installmentsTotal: 3,
-    cadence: "monthly",
-    nextPaymentDate: "",
-    status: "cancelled",
-    createdAt: "2026-01-01",
-    installments: [
-      { date: "2026-01-01", amount: 250, status: "paid", paidDate: "2026-01-01" },
-      { date: "2026-02-01", amount: 250, status: "pending" },
-      { date: "2026-03-01", amount: 250, status: "pending" },
-    ],
-  },
-  {
-    _id: "plan_11",
-    patientName: "Jennifer Lee",
-    patientId: "pat_8",
-    totalAmount: 1200,
-    remaining: 800,
-    installmentsPaid: 2,
-    installmentsTotal: 6,
-    cadence: "biweekly",
-    nextPaymentDate: "2026-02-21",
-    status: "active",
-    cardOnFile: { last4: "5678", brand: "Mastercard" },
-    createdAt: "2026-01-10",
-    installments: [
-      { date: "2026-01-10", amount: 200, status: "paid", paidDate: "2026-01-10" },
-      { date: "2026-01-24", amount: 200, status: "paid", paidDate: "2026-01-24" },
-      { date: "2026-02-07", amount: 200, status: "overdue" },
-      { date: "2026-02-21", amount: 200, status: "pending" },
-      { date: "2026-03-07", amount: 200, status: "pending" },
-      { date: "2026-03-21", amount: 200, status: "pending" },
-    ],
-  },
-]
+// Helper to normalize plan fields from Convex schema
+function normalizePlan(raw: any): PaymentPlan {
+  const installments = (raw.installments ?? []).map((inst: any) => ({
+    ...inst,
+    date: inst.date ?? inst.dueDate,
+    status: inst.status ?? "pending",
+  }))
+  const paidInstallments = installments.filter((i: Installment) => i.status === "paid")
+  const remaining = raw.remaining ?? raw.remainingAmount ?? 0
+  return {
+    ...raw,
+    remaining,
+    installments,
+    installmentsPaid: raw.installmentsPaid ?? paidInstallments.length,
+    installmentsTotal: raw.installmentsTotal ?? installments.length,
+    nextPaymentDate: raw.nextPaymentDate ?? raw.nextChargeDate ?? "",
+  }
+}
 
 // ─── Component ──────────────────────────────────────────────────────────────
 
@@ -473,90 +237,124 @@ export default function PaymentPlansPage() {
     autoCharge: false,
   })
 
-  // Try Convex query, fall back to mock data
-  let plans: PaymentPlan[] | undefined
-  let convexError = false
-  try {
-    // eslint-disable-next-line react-hooks/rules-of-hooks
-    const result = useQuery(api.payments.queries.listPlans)
-    plans = (result as PaymentPlan[] | undefined) ?? undefined
-  } catch {
-    convexError = true
-    plans = MOCK_PLANS
-  }
+  // Query payment plans from Convex — returns { plans: [...], totalCount }
+  const rawPlansResult = useQuery(api.paymentPlans.queries.list as any, {})
+  const rawPlans = rawPlansResult ? (rawPlansResult as any).plans ?? rawPlansResult : undefined
+
+  // Query patients for the create dialog
+  const rawPatients = useQuery((api as any).patients.queries.list, {})
 
   let createPlan: ((args: any) => Promise<any>) | null = null
   let recordPayment: ((args: any) => Promise<any>) | null = null
   let cancelPlan: ((args: any) => Promise<any>) | null = null
   try {
     // eslint-disable-next-line react-hooks/rules-of-hooks
-    createPlan = useMutation(api.payments.mutations.createPlan)
+    createPlan = useMutation(api.paymentPlans.mutations.create as any)
     // eslint-disable-next-line react-hooks/rules-of-hooks
-    recordPayment = useMutation(api.payments.mutations.recordPayment)
+    recordPayment = useMutation(api.paymentPlans.mutations.recordPayment as any)
     // eslint-disable-next-line react-hooks/rules-of-hooks
-    cancelPlan = useMutation(api.payments.mutations.cancelPlan)
+    cancelPlan = useMutation(api.paymentPlans.mutations.cancel as any)
   } catch {
     // Mutations unavailable when Convex is not connected
   }
 
-  const filtered = useMemo(() => {
-    if (!plans) return []
-    return plans.filter((plan) => {
-      const matchesSearch =
-        search === "" ||
-        plan.patientName.toLowerCase().includes(search.toLowerCase())
-      const matchesStatus =
-        statusFilter === "all" || plan.status === statusFilter
-      return matchesSearch && matchesStatus
-    })
-  }, [plans, search, statusFilter])
+  // Loading state
+  if (rawPlans === undefined) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">Payment Plans</h1>
+            <p className="text-muted-foreground">
+              Configurable installment plans with automated recurring charges,
+              payment reminders, and delinquency tracking.
+            </p>
+          </div>
+        </div>
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="h-28 bg-muted animate-pulse rounded-lg" />
+          ))}
+        </div>
+        <div className="space-y-3">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="h-20 bg-muted animate-pulse rounded-lg" />
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  // Empty state
+  if (rawPlans.length === 0) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">Payment Plans</h1>
+            <p className="text-muted-foreground">
+              Configurable installment plans with automated recurring charges,
+              payment reminders, and delinquency tracking.
+            </p>
+          </div>
+        </div>
+        <DataEmptyState resource="payment plans" />
+      </div>
+    )
+  }
+
+  // Normalize plans from Convex schema shape
+  const plans: PaymentPlan[] = (rawPlans as any[]).map(normalizePlan)
+  const patients = Array.isArray(rawPatients)
+    ? (rawPatients as any[]).map((p: any) => ({
+        id: p._id,
+        name: `${p.firstName ?? ""} ${p.lastName ?? ""}`.trim() || "Unknown",
+      }))
+    : []
+
+  const filtered = plans.filter((plan) => {
+    const patientName = plan.patientName ?? ""
+    const matchesSearch =
+      search === "" ||
+      patientName.toLowerCase().includes(search.toLowerCase())
+    const matchesStatus =
+      statusFilter === "all" || plan.status === statusFilter
+    return matchesSearch && matchesStatus
+  })
 
   // Stats computed from plans
-  const stats = useMemo(() => {
-    if (!plans) return { active: 0, outstanding: 0, monthly: 0, defaultRate: 0 }
-    const activePlans = plans.filter((p) => p.status === "active")
-    const outstanding = activePlans.reduce((sum, p) => sum + p.remaining, 0)
-    const monthlyCollections = activePlans.reduce((sum, p) => {
-      if (p.cadence === "monthly") return sum + (p.totalAmount / p.installmentsTotal)
-      if (p.cadence === "biweekly") return sum + (p.totalAmount / p.installmentsTotal) * 2
-      if (p.cadence === "weekly") return sum + (p.totalAmount / p.installmentsTotal) * 4
-      return sum
-    }, 0)
-    const totalPlans = plans.length
-    const defaultedCount = plans.filter((p) => p.status === "defaulted").length
-    const defaultRate = totalPlans > 0 ? (defaultedCount / totalPlans) * 100 : 0
+  const activePlans = plans.filter((p) => p.status === "active")
+  const outstanding = activePlans.reduce((sum, p) => sum + (p.remaining ?? 0), 0)
+  const monthlyCollections = activePlans.reduce((sum, p) => {
+    const installmentsTotal = p.installmentsTotal ?? p.installments.length
+    if (installmentsTotal === 0) return sum
+    const perInstallment = p.totalAmount / installmentsTotal
+    if (p.cadence === "monthly") return sum + perInstallment
+    if (p.cadence === "biweekly") return sum + perInstallment * 2
+    if (p.cadence === "weekly") return sum + perInstallment * 4
+    return sum
+  }, 0)
+  const totalPlans = plans.length
+  const defaultedCount = plans.filter((p) => p.status === "defaulted").length
+  const defaultRate = totalPlans > 0 ? (defaultedCount / totalPlans) * 100 : 0
 
-    return {
-      active: activePlans.length,
-      outstanding,
-      monthly: monthlyCollections,
-      defaultRate,
-    }
-  }, [plans])
+  const stats = {
+    active: activePlans.length,
+    outstanding,
+    monthly: monthlyCollections,
+    defaultRate,
+  }
 
   // Installment preview for create dialog
-  const installmentPreview = useMemo(() => {
+  const installmentPreview = (() => {
     const amount = parseFloat(createForm.totalAmount)
     const count = parseInt(createForm.installments)
     if (!amount || amount <= 0 || !count || !createForm.startDate) return []
     return generateInstallments(amount, count, createForm.cadence, createForm.startDate)
-  }, [createForm.totalAmount, createForm.installments, createForm.cadence, createForm.startDate])
-
-  const selectedPatient = MOCK_PATIENTS.find((p) => p.id === createForm.patientId)
-  // Check if selected patient has a card on file (mock: some patients do)
-  const patientCards: Record<string, { last4: string; brand: string }> = {
-    pat_1: { last4: "4242", brand: "Visa" },
-    pat_4: { last4: "3456", brand: "Amex" },
-    pat_6: { last4: "7890", brand: "Visa" },
-    pat_8: { last4: "5678", brand: "Mastercard" },
-  }
-  const selectedPatientCard = createForm.patientId
-    ? patientCards[createForm.patientId]
-    : undefined
+  })()
 
   async function handleCreate() {
     if (!createPlan) {
-      // Demo mode — just close
       setCreateOpen(false)
       resetForm()
       return
@@ -655,7 +453,7 @@ export default function PaymentPlansPage() {
                     <SelectValue placeholder="Select a patient" />
                   </SelectTrigger>
                   <SelectContent>
-                    {MOCK_PATIENTS.map((p) => (
+                    {patients.map((p) => (
                       <SelectItem key={p.id} value={p.id}>
                         {p.name}
                       </SelectItem>
@@ -749,30 +547,6 @@ export default function PaymentPlansPage() {
                 </div>
               </div>
 
-              {/* Card on File */}
-              {selectedPatientCard && (
-                <div className="flex items-center gap-3 rounded-lg border p-3">
-                  <CreditCard className="size-5 text-muted-foreground" />
-                  <div className="flex-1">
-                    <p className="text-sm font-medium">
-                      {selectedPatientCard.brand} ending in {selectedPatientCard.last4}
-                    </p>
-                    <p className="text-xs text-muted-foreground">Card on file</p>
-                  </div>
-                  <label className="flex items-center gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      checked={createForm.autoCharge}
-                      onChange={(e) =>
-                        setCreateForm({ ...createForm, autoCharge: e.target.checked })
-                      }
-                      className="rounded border-gray-300"
-                    />
-                    Auto-charge
-                  </label>
-                </div>
-              )}
-
               {/* Installment Preview */}
               {installmentPreview.length > 0 && (
                 <div className="space-y-2">
@@ -796,7 +570,7 @@ export default function PaymentPlansPage() {
                               {i + 1}
                             </TableCell>
                             <TableCell className="py-1.5 text-xs">
-                              {formatDateStr(inst.date)}
+                              {inst.date ? formatDateStr(inst.date) : "--"}
                             </TableCell>
                             <TableCell className="py-1.5 text-right text-xs">
                               {formatCurrency(inst.amount)}
@@ -820,17 +594,6 @@ export default function PaymentPlansPage() {
           </DialogContent>
         </Dialog>
       </div>
-
-      {/* Convex Warning */}
-      {convexError && (
-        <Card className="border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/30">
-          <CardContent className="pt-6">
-            <p className="text-sm text-amber-800 dark:text-amber-200">
-              Convex backend is not connected. Displaying mock data for preview.
-            </p>
-          </CardContent>
-        </Card>
-      )}
 
       {/* Stats Cards */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -927,218 +690,224 @@ export default function PaymentPlansPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {!plans ? (
-                  <TableRow>
-                    <TableCell colSpan={9} className="h-24 text-center">
-                      <div className="flex items-center justify-center gap-2 text-muted-foreground">
-                        <div className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                        Loading payment plans...
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ) : filtered.length === 0 ? (
+                {filtered.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={9} className="h-24 text-center text-muted-foreground">
                       No payment plans found.
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filtered.map((plan) => (
-                    <>
-                      {/* Main Row */}
-                      <TableRow
-                        key={plan._id}
-                        className="cursor-pointer"
-                        onClick={() => toggleExpand(plan._id)}
-                      >
-                        <TableCell className="px-2">
-                          {expandedPlan === plan._id ? (
-                            <ChevronDown className="size-4 text-muted-foreground" />
-                          ) : (
-                            <ChevronRight className="size-4 text-muted-foreground" />
-                          )}
-                        </TableCell>
-                        <TableCell className="font-medium">{plan.patientName}</TableCell>
-                        <TableCell className="text-right">
-                          {formatCurrency(plan.totalAmount)}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {formatCurrency(plan.remaining)}
-                        </TableCell>
-                        <TableCell>
-                          <span className="text-sm">
-                            {plan.installmentsPaid}/{plan.installmentsTotal}
-                          </span>
-                        </TableCell>
-                        <TableCell>{cadenceLabel(plan.cadence)}</TableCell>
-                        <TableCell>
-                          {plan.nextPaymentDate
-                            ? formatDateStr(plan.nextPaymentDate)
-                            : <span className="text-muted-foreground">--</span>
-                          }
-                        </TableCell>
-                        <TableCell>
-                          <Badge
-                            variant="secondary"
-                            className={statusBadgeClass(plan.status)}
-                          >
-                            {plan.status.charAt(0).toUpperCase() + plan.status.slice(1)}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="icon-sm"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                <MoreHorizontal className="size-4" />
-                                <span className="sr-only">Actions</span>
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  toggleExpand(plan._id)
-                                }}
-                              >
-                                View Details
-                              </DropdownMenuItem>
-                              {plan.status === "active" && (
-                                <>
-                                  <DropdownMenuItem
-                                    onClick={(e) => {
-                                      e.stopPropagation()
-                                      handleRecordPayment(plan._id)
-                                    }}
-                                  >
-                                    Record Payment
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem
-                                    onClick={(e) => {
-                                      e.stopPropagation()
-                                      handleCancelPlan(plan._id)
-                                    }}
-                                    className="text-destructive focus:text-destructive"
-                                  >
-                                    Cancel Plan
-                                  </DropdownMenuItem>
-                                </>
-                              )}
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </TableCell>
-                      </TableRow>
+                  filtered.map((plan) => {
+                    const remaining = plan.remaining ?? 0
+                    const installmentsPaid = plan.installmentsPaid ?? 0
+                    const installmentsTotal = plan.installmentsTotal ?? plan.installments.length
+                    const nextDate = plan.nextPaymentDate || plan.nextChargeDate || ""
+                    const createdStr = typeof plan.createdAt === "number"
+                      ? formatTimestamp(plan.createdAt)
+                      : formatDateStr(plan.createdAt as string)
 
-                      {/* Expanded Row */}
-                      {expandedPlan === plan._id && (
-                        <TableRow key={`${plan._id}-expanded`}>
-                          <TableCell colSpan={9} className="bg-muted/30 p-0">
-                            <div className="p-4 space-y-4">
-                              {/* Plan Summary */}
-                              <div className="flex items-center gap-6 text-sm">
-                                <div>
-                                  <span className="text-muted-foreground">Created:</span>{" "}
-                                  {formatDateStr(plan.createdAt)}
-                                </div>
-                                {plan.cardOnFile && (
-                                  <div className="flex items-center gap-1.5">
-                                    <CreditCard className="size-3.5 text-muted-foreground" />
-                                    <span className="text-muted-foreground">Card:</span>{" "}
-                                    {plan.cardOnFile.brand} ****{plan.cardOnFile.last4}
-                                  </div>
+                    return (
+                      <Fragment key={plan._id}>
+                        {/* Main Row */}
+                        <TableRow
+                          className="cursor-pointer"
+                          onClick={() => toggleExpand(plan._id)}
+                        >
+                          <TableCell className="px-2">
+                            {expandedPlan === plan._id ? (
+                              <ChevronDown className="size-4 text-muted-foreground" />
+                            ) : (
+                              <ChevronRight className="size-4 text-muted-foreground" />
+                            )}
+                          </TableCell>
+                          <TableCell className="font-medium">{plan.patientName ?? "Unknown"}</TableCell>
+                          <TableCell className="text-right">
+                            {formatCurrency(plan.totalAmount)}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {formatCurrency(remaining)}
+                          </TableCell>
+                          <TableCell>
+                            <span className="text-sm">
+                              {installmentsPaid}/{installmentsTotal}
+                            </span>
+                          </TableCell>
+                          <TableCell>{cadenceLabel(plan.cadence)}</TableCell>
+                          <TableCell>
+                            {nextDate
+                              ? formatDateStr(nextDate)
+                              : <span className="text-muted-foreground">--</span>
+                            }
+                          </TableCell>
+                          <TableCell>
+                            <Badge
+                              variant="secondary"
+                              className={statusBadgeClass(plan.status)}
+                            >
+                              {plan.status.charAt(0).toUpperCase() + plan.status.slice(1)}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon-sm"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <MoreHorizontal className="size-4" />
+                                  <span className="sr-only">Actions</span>
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    toggleExpand(plan._id)
+                                  }}
+                                >
+                                  View Details
+                                </DropdownMenuItem>
+                                {plan.status === "active" && (
+                                  <>
+                                    <DropdownMenuItem
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        handleRecordPayment(plan._id)
+                                      }}
+                                    >
+                                      Record Payment
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        handleCancelPlan(plan._id)
+                                      }}
+                                      className="text-destructive focus:text-destructive"
+                                    >
+                                      Cancel Plan
+                                    </DropdownMenuItem>
+                                  </>
                                 )}
-                                {!plan.cardOnFile && (
-                                  <div className="flex items-center gap-1.5 text-muted-foreground">
-                                    <CreditCard className="size-3.5" />
-                                    No card on file
-                                  </div>
-                                )}
-                              </div>
-
-                              {/* Installment Schedule */}
-                              <div>
-                                <h4 className="mb-2 text-sm font-medium">
-                                  Installment Schedule
-                                </h4>
-                                <div className="rounded-md border bg-background">
-                                  <Table>
-                                    <TableHeader>
-                                      <TableRow>
-                                        <TableHead className="text-xs">#</TableHead>
-                                        <TableHead className="text-xs">Due Date</TableHead>
-                                        <TableHead className="text-right text-xs">Amount</TableHead>
-                                        <TableHead className="text-xs">Status</TableHead>
-                                        <TableHead className="text-xs">Paid Date</TableHead>
-                                      </TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                      {plan.installments.map((inst, i) => (
-                                        <TableRow key={i}>
-                                          <TableCell className="py-1.5 text-xs text-muted-foreground">
-                                            {i + 1}
-                                          </TableCell>
-                                          <TableCell className="py-1.5 text-xs">
-                                            {formatDateStr(inst.date)}
-                                          </TableCell>
-                                          <TableCell className="py-1.5 text-right text-xs">
-                                            {formatCurrency(inst.amount)}
-                                          </TableCell>
-                                          <TableCell className="py-1.5">
-                                            <Badge
-                                              variant="secondary"
-                                              className={`text-xs ${installmentBadgeClass(inst.status)}`}
-                                            >
-                                              {inst.status.charAt(0).toUpperCase() +
-                                                inst.status.slice(1)}
-                                            </Badge>
-                                          </TableCell>
-                                          <TableCell className="py-1.5 text-xs text-muted-foreground">
-                                            {inst.paidDate
-                                              ? formatDateStr(inst.paidDate)
-                                              : "--"}
-                                          </TableCell>
-                                        </TableRow>
-                                      ))}
-                                    </TableBody>
-                                  </Table>
-                                </div>
-                              </div>
-
-                              {/* Payment History Summary */}
-                              <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                                <span>
-                                  Total Paid:{" "}
-                                  <span className="font-medium text-foreground">
-                                    {formatCurrency(plan.totalAmount - plan.remaining)}
-                                  </span>
-                                </span>
-                                <span>
-                                  Remaining:{" "}
-                                  <span className="font-medium text-foreground">
-                                    {formatCurrency(plan.remaining)}
-                                  </span>
-                                </span>
-                                <span>
-                                  Progress:{" "}
-                                  <span className="font-medium text-foreground">
-                                    {plan.installmentsTotal > 0
-                                      ? Math.round(
-                                          (plan.installmentsPaid / plan.installmentsTotal) * 100
-                                        )
-                                      : 0}
-                                    %
-                                  </span>
-                                </span>
-                              </div>
-                            </div>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                           </TableCell>
                         </TableRow>
-                      )}
-                    </>
-                  ))
+
+                        {/* Expanded Row */}
+                        {expandedPlan === plan._id && (
+                          <TableRow key={`${plan._id}-expanded`}>
+                            <TableCell colSpan={9} className="bg-muted/30 p-0">
+                              <div className="p-4 space-y-4">
+                                {/* Plan Summary */}
+                                <div className="flex items-center gap-6 text-sm">
+                                  <div>
+                                    <span className="text-muted-foreground">Created:</span>{" "}
+                                    {createdStr}
+                                  </div>
+                                  {plan.cardOnFile && (
+                                    <div className="flex items-center gap-1.5">
+                                      <CreditCard className="size-3.5 text-muted-foreground" />
+                                      <span className="text-muted-foreground">Card:</span>{" "}
+                                      {plan.cardOnFile.brand} ****{plan.cardOnFile.last4}
+                                    </div>
+                                  )}
+                                  {!plan.cardOnFile && (
+                                    <div className="flex items-center gap-1.5 text-muted-foreground">
+                                      <CreditCard className="size-3.5" />
+                                      No card on file
+                                    </div>
+                                  )}
+                                </div>
+
+                                {/* Installment Schedule */}
+                                <div>
+                                  <h4 className="mb-2 text-sm font-medium">
+                                    Installment Schedule
+                                  </h4>
+                                  <div className="rounded-md border bg-background">
+                                    <Table>
+                                      <TableHeader>
+                                        <TableRow>
+                                          <TableHead className="text-xs">#</TableHead>
+                                          <TableHead className="text-xs">Due Date</TableHead>
+                                          <TableHead className="text-right text-xs">Amount</TableHead>
+                                          <TableHead className="text-xs">Status</TableHead>
+                                          <TableHead className="text-xs">Paid Date</TableHead>
+                                        </TableRow>
+                                      </TableHeader>
+                                      <TableBody>
+                                        {plan.installments.map((inst, i) => {
+                                          const instDate = inst.date ?? inst.dueDate ?? ""
+                                          const paidDateStr = inst.paidDate
+                                            ? formatDateStr(inst.paidDate)
+                                            : inst.paidAt
+                                              ? formatTimestamp(inst.paidAt)
+                                              : "--"
+                                          return (
+                                            <TableRow key={i}>
+                                              <TableCell className="py-1.5 text-xs text-muted-foreground">
+                                                {inst.number ?? i + 1}
+                                              </TableCell>
+                                              <TableCell className="py-1.5 text-xs">
+                                                {instDate ? formatDateStr(instDate) : "--"}
+                                              </TableCell>
+                                              <TableCell className="py-1.5 text-right text-xs">
+                                                {formatCurrency(inst.amount)}
+                                              </TableCell>
+                                              <TableCell className="py-1.5">
+                                                <Badge
+                                                  variant="secondary"
+                                                  className={`text-xs ${installmentBadgeClass(inst.status)}`}
+                                                >
+                                                  {inst.status.charAt(0).toUpperCase() +
+                                                    inst.status.slice(1)}
+                                                </Badge>
+                                              </TableCell>
+                                              <TableCell className="py-1.5 text-xs text-muted-foreground">
+                                                {paidDateStr}
+                                              </TableCell>
+                                            </TableRow>
+                                          )
+                                        })}
+                                      </TableBody>
+                                    </Table>
+                                  </div>
+                                </div>
+
+                                {/* Payment History Summary */}
+                                <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                                  <span>
+                                    Total Paid:{" "}
+                                    <span className="font-medium text-foreground">
+                                      {formatCurrency(plan.totalAmount - remaining)}
+                                    </span>
+                                  </span>
+                                  <span>
+                                    Remaining:{" "}
+                                    <span className="font-medium text-foreground">
+                                      {formatCurrency(remaining)}
+                                    </span>
+                                  </span>
+                                  <span>
+                                    Progress:{" "}
+                                    <span className="font-medium text-foreground">
+                                      {installmentsTotal > 0
+                                        ? Math.round(
+                                            (installmentsPaid / installmentsTotal) * 100
+                                          )
+                                        : 0}
+                                      %
+                                    </span>
+                                  </span>
+                                </div>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </Fragment>
+                    )
+                  })
                 )}
               </TableBody>
             </Table>

@@ -3,7 +3,6 @@
 import { useState, useMemo } from "react"
 import { useQuery, useMutation } from "convex/react"
 import { api } from "../../../../../convex/_generated/api"
-import type { Id } from "../../../../../convex/_generated/dataModel"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -42,6 +41,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { DataEmptyState } from "@/components/ui/data-empty-state"
 import {
   Users,
   Clock,
@@ -53,8 +53,6 @@ import {
   Search,
   Sparkles,
   Plus,
-  ArrowRight,
-  Star,
   DollarSign,
 } from "lucide-react"
 
@@ -80,34 +78,6 @@ interface QuickFillItem {
   phone: string
 }
 
-interface OverdueHygiene {
-  patientId: string
-  patientName: string
-  lastHygieneDate: string
-  monthsOverdue: number
-  phone: string
-  insurance: string
-  estimatedValue: number
-}
-
-interface UnscheduledTreatment {
-  patientId: string
-  patientName: string
-  treatment: string
-  planDate: string
-  estimatedValue: number
-  insuranceCoverage: string
-}
-
-interface AsapItem {
-  patientId: string
-  patientName: string
-  reason: string
-  dateAdded: string
-  priority: string
-  phone: string
-}
-
 interface AiSuggestion {
   patientName: string
   appointmentType: string
@@ -115,59 +85,6 @@ interface AiSuggestion {
   rationale: string
   estimatedValue: number
 }
-
-// ---------------------------------------------------------------------------
-// Mock Data
-// ---------------------------------------------------------------------------
-
-const MOCK_QUEUE: QuickFillItem[] = [
-  { _id: "qf_1" as Id<"quickFillQueue">, patientName: "James Wilson", appointmentType: "Crown Prep", preferredDays: ["Monday", "Wednesday"], preferredTimes: ["Morning"], urgency: "urgent", priorityScore: 88, status: "waiting", contactAttempts: 0, waitDays: 3, estimatedValue: 1200, phone: "(555) 123-4567" },
-  { _id: "qf_2" as Id<"quickFillQueue">, patientName: "Sarah Martinez", appointmentType: "Hygiene", preferredDays: ["Tuesday", "Thursday"], preferredTimes: ["Afternoon"], urgency: "routine", priorityScore: 52, status: "contacted", contactAttempts: 1, waitDays: 7, estimatedValue: 185, phone: "(555) 234-5678" },
-  { _id: "qf_3" as Id<"quickFillQueue">, patientName: "Tom Baker", appointmentType: "Emergency Exam", preferredDays: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"], preferredTimes: ["Morning", "Afternoon"], urgency: "emergency", priorityScore: 95, status: "waiting", contactAttempts: 0, waitDays: 1, estimatedValue: 250, phone: "(555) 456-7890" },
-  { _id: "qf_4" as Id<"quickFillQueue">, patientName: "Lisa Park", appointmentType: "Filling #19", preferredDays: ["Wednesday", "Friday"], preferredTimes: ["Morning"], urgency: "soon", priorityScore: 65, status: "waiting", contactAttempts: 0, waitDays: 5, estimatedValue: 320, phone: "(555) 567-8901" },
-  { _id: "qf_5" as Id<"quickFillQueue">, patientName: "Kevin Rodriguez", appointmentType: "Root Canal", preferredDays: ["Monday", "Thursday"], preferredTimes: ["Afternoon"], urgency: "urgent", priorityScore: 82, status: "contacted", contactAttempts: 2, waitDays: 4, estimatedValue: 950, phone: "(555) 678-9012" },
-  { _id: "qf_6" as Id<"quickFillQueue">, patientName: "Nancy White", appointmentType: "Hygiene", preferredDays: ["Tuesday"], preferredTimes: ["Morning"], urgency: "routine", priorityScore: 35, status: "scheduled", contactAttempts: 1, waitDays: 12, estimatedValue: 185, phone: "(555) 789-0123" },
-  { _id: "qf_7" as Id<"quickFillQueue">, patientName: "David Kim", appointmentType: "Crown Seat", preferredDays: ["Monday", "Wednesday"], preferredTimes: ["Afternoon"], urgency: "soon", priorityScore: 71, status: "waiting", contactAttempts: 0, waitDays: 6, estimatedValue: 450, phone: "(555) 890-1234" },
-  { _id: "qf_8" as Id<"quickFillQueue">, patientName: "Patricia Martinez", appointmentType: "Extraction", preferredDays: ["Thursday", "Friday"], preferredTimes: ["Morning"], urgency: "urgent", priorityScore: 79, status: "contacted", contactAttempts: 1, waitDays: 2, estimatedValue: 350, phone: "(555) 901-2345" },
-  { _id: "qf_9" as Id<"quickFillQueue">, patientName: "Robert Chen", appointmentType: "Hygiene", preferredDays: ["Monday", "Tuesday", "Wednesday"], preferredTimes: ["Morning", "Afternoon"], urgency: "routine", priorityScore: 42, status: "expired", contactAttempts: 3, waitDays: 21, estimatedValue: 185, phone: "(555) 012-3456" },
-  { _id: "qf_10" as Id<"quickFillQueue">, patientName: "Jennifer Adams", appointmentType: "Veneer Consult", preferredDays: ["Friday"], preferredTimes: ["Afternoon"], urgency: "routine", priorityScore: 28, status: "declined", contactAttempts: 2, waitDays: 14, estimatedValue: 2500, phone: "(555) 345-6780" },
-  { _id: "qf_11" as Id<"quickFillQueue">, patientName: "Michael Scott", appointmentType: "Composite Filling", preferredDays: ["Tuesday", "Thursday"], preferredTimes: ["Morning"], urgency: "soon", priorityScore: 58, status: "waiting", contactAttempts: 0, waitDays: 8, estimatedValue: 285, phone: "(555) 456-0987" },
-  { _id: "qf_12" as Id<"quickFillQueue">, patientName: "Angela Davis", appointmentType: "Periodontal Scaling", preferredDays: ["Monday", "Wednesday", "Friday"], preferredTimes: ["Afternoon"], urgency: "urgent", priorityScore: 76, status: "waiting", contactAttempts: 0, waitDays: 3, estimatedValue: 425, phone: "(555) 567-1098" },
-]
-
-const MOCK_OVERDUE_HYGIENE: OverdueHygiene[] = [
-  { patientId: "p1", patientName: "Robert Chen", lastHygieneDate: "2025-05-15", monthsOverdue: 8, phone: "(555) 345-6789", insurance: "Delta Dental", estimatedValue: 185 },
-  { patientId: "p2", patientName: "Amanda Scott", lastHygieneDate: "2025-03-10", monthsOverdue: 10, phone: "(555) 456-7891", insurance: "MetLife", estimatedValue: 185 },
-  { patientId: "p3", patientName: "Steven Wright", lastHygieneDate: "2025-07-22", monthsOverdue: 6, phone: "(555) 567-8902", insurance: "Cigna Dental", estimatedValue: 185 },
-  { patientId: "p4", patientName: "Karen Young", lastHygieneDate: "2024-11-05", monthsOverdue: 14, phone: "(555) 678-9013", insurance: "Delta Dental", estimatedValue: 185 },
-  { patientId: "p5", patientName: "Christopher Hall", lastHygieneDate: "2025-01-18", monthsOverdue: 12, phone: "(555) 789-0124", insurance: "Aetna", estimatedValue: 185 },
-  { patientId: "p6", patientName: "Michelle Clark", lastHygieneDate: "2025-08-30", monthsOverdue: 5, phone: "(555) 890-1235", insurance: "United Healthcare", estimatedValue: 185 },
-  { patientId: "p7", patientName: "Daniel Adams", lastHygieneDate: "2025-06-14", monthsOverdue: 7, phone: "(555) 901-2346", insurance: "Guardian", estimatedValue: 185 },
-  { patientId: "p8", patientName: "Laura Bennett", lastHygieneDate: "2025-04-02", monthsOverdue: 9, phone: "(555) 012-3457", insurance: "Delta Dental", estimatedValue: 185 },
-]
-
-const MOCK_UNSCHEDULED_TX: UnscheduledTreatment[] = [
-  { patientId: "p10", patientName: "Maria Garcia", treatment: "Root Canal #14", planDate: "2025-10-20", estimatedValue: 950, insuranceCoverage: "80%" },
-  { patientId: "p11", patientName: "James Wilson", treatment: "Crown #30 (PFM)", planDate: "2025-11-05", estimatedValue: 1250, insuranceCoverage: "50%" },
-  { patientId: "p12", patientName: "Thomas Lee", treatment: "Bridge #3-5", planDate: "2025-09-15", estimatedValue: 3750, insuranceCoverage: "50%" },
-  { patientId: "p13", patientName: "Susan Brown", treatment: "Composite #19 MO", planDate: "2025-12-01", estimatedValue: 285, insuranceCoverage: "80%" },
-  { patientId: "p14", patientName: "Linda Thompson", treatment: "Extraction #1", planDate: "2025-10-10", estimatedValue: 200, insuranceCoverage: "80%" },
-  { patientId: "p15", patientName: "Richard Moore", treatment: "Implant Consult", planDate: "2025-11-20", estimatedValue: 4500, insuranceCoverage: "0%" },
-]
-
-const MOCK_ASAP: AsapItem[] = [
-  { patientId: "p20", patientName: "Tom Baker", reason: "Broken tooth - pain", dateAdded: "2026-01-28", priority: "urgent", phone: "(555) 456-7890" },
-  { patientId: "p21", patientName: "Angela Davis", reason: "Swelling lower left", dateAdded: "2026-01-30", priority: "urgent", phone: "(555) 567-1098" },
-  { patientId: "p22", patientName: "Kevin Rodriguez", reason: "Lost filling #14", dateAdded: "2026-01-25", priority: "soon", phone: "(555) 678-9012" },
-  { patientId: "p23", patientName: "Jennifer Adams", reason: "Tooth sensitivity", dateAdded: "2026-02-01", priority: "routine", phone: "(555) 345-6780" },
-  { patientId: "p24", patientName: "Michael Scott", reason: "Chipped front tooth", dateAdded: "2026-02-03", priority: "soon", phone: "(555) 456-0987" },
-]
-
-const MOCK_AI_SUGGESTIONS: AiSuggestion[] = [
-  { patientName: "James Wilson", appointmentType: "Crown Prep", score: 92, rationale: "High-value procedure ($1,200), patient has been waiting 3 days, preferred day matches open slot. Crown prep fits provider's specialty.", estimatedValue: 1200 },
-  { patientName: "Tom Baker", appointmentType: "Emergency Exam", score: 85, rationale: "Urgent: broken tooth with pain reported. Patient is on ASAP list. Quick exam fills 30-min gap efficiently.", estimatedValue: 250 },
-  { patientName: "Lisa Park", appointmentType: "Filling #19", score: 71, rationale: "Unscheduled treatment from Oct plan. Insurance coverage at 80%. Treatment fits time slot duration.", estimatedValue: 320 },
-]
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -239,35 +156,57 @@ export default function QuickFillPage() {
     operatory: "",
   })
 
-  // Try Convex, fallback to mock
-  let queue: QuickFillItem[] | undefined
-  let convexError = false
-  try {
-    // eslint-disable-next-line react-hooks/rules-of-hooks
-    const result = useQuery(api.quickfill.queries.listQueue)
-    queue = (result as QuickFillItem[] | undefined) ?? undefined
-  } catch {
-    convexError = true
-    queue = MOCK_QUEUE
-  }
+  // Load from Convex
+  const queueData = useQuery(api.quickfill.queries.list as any, {})
+  const gapFillData = useQuery(api.quickfill.queries.getGapFillToolbox as any, {})
 
   // Mutations (best-effort)
   let addToQueue: ((args: Record<string, unknown>) => Promise<unknown>) | null = null
   let removeFromQueue: ((args: Record<string, unknown>) => Promise<unknown>) | null = null
   try {
     // eslint-disable-next-line react-hooks/rules-of-hooks
-    addToQueue = useMutation(api.quickfill.mutations.addToQueue)
+    addToQueue = useMutation(api.quickfill.mutations.addToQueue) as any
     // eslint-disable-next-line react-hooks/rules-of-hooks
-    removeFromQueue = useMutation(api.quickfill.mutations.removeFromQueue)
+    removeFromQueue = useMutation(api.quickfill.mutations.removeFromQueue) as any
   } catch {
     // Mutations unavailable
   }
 
-  const items = queue ?? MOCK_QUEUE
+  // Loading state
+  if (queueData === undefined) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">Quick Fill Queue</h1>
+            <p className="text-muted-foreground">Manage patient waitlist and fill schedule gaps efficiently.</p>
+          </div>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="h-20 bg-muted animate-pulse rounded-lg" />
+          ))}
+        </div>
+        {[1, 2].map((i) => (
+          <div key={i} className="h-60 bg-muted animate-pulse rounded-lg" />
+        ))}
+      </div>
+    )
+  }
+
+  // list returns { items, totalCount } — extract items array
+  const rawQueue = queueData && typeof queueData === "object" && "items" in (queueData as any)
+    ? (queueData as any).items
+    : queueData
+  const items = (rawQueue as QuickFillItem[]) ?? []
+  // getGapFillToolbox returns { overdueHygiene, unscheduledTreatment, asapList }
+  const overdueHygiene = (gapFillData as any)?.overdueHygiene ?? []
+  const unscheduledTx = (gapFillData as any)?.unscheduledTreatment ?? []
+  const asapItems = (gapFillData as any)?.asapList ?? []
 
   // Stats
   const waitingCount = items.filter((i) => i.status === "waiting").length
-  const avgWait = items.length > 0 ? Math.round(items.reduce((s, i) => s + i.waitDays, 0) / items.length) : 0
+  const avgWait = items.length > 0 ? Math.round(items.reduce((s, i) => s + (i.waitDays || 0), 0) / items.length) : 0
   const filledCount = items.filter((i) => i.status === "scheduled").length
   const totalActive = items.filter((i) => i.status !== "expired" && i.status !== "declined").length
   const fillRate = totalActive > 0 ? Math.round((filledCount / totalActive) * 100) : 0
@@ -277,19 +216,19 @@ export default function QuickFillPage() {
     return items.filter((item) => {
       const matchesSearch =
         search === "" ||
-        item.patientName.toLowerCase().includes(search.toLowerCase()) ||
-        item.appointmentType.toLowerCase().includes(search.toLowerCase())
+        (item.patientName || "").toLowerCase().includes(search.toLowerCase()) ||
+        (item.appointmentType || "").toLowerCase().includes(search.toLowerCase())
       const matchesStatus = statusFilter === "all" || item.status === statusFilter
       return matchesSearch && matchesStatus
-    }).sort((a, b) => b.priorityScore - a.priorityScore)
+    }).sort((a, b) => (b.priorityScore || 0) - (a.priorityScore || 0))
   }, [items, search, statusFilter])
 
   // Filtered overdue hygiene
   const filteredOverdue = useMemo(() => {
-    if (overdueFilter === "all") return MOCK_OVERDUE_HYGIENE
+    if (overdueFilter === "all") return overdueHygiene
     const minMonths = parseInt(overdueFilter)
-    return MOCK_OVERDUE_HYGIENE.filter((h) => h.monthsOverdue >= minMonths)
-  }, [overdueFilter])
+    return overdueHygiene.filter((h: any) => (h.monthsOverdue || 0) >= minMonths)
+  }, [overdueHygiene, overdueFilter])
 
   function toggleDay(day: string) {
     setAddForm((prev) => ({
@@ -331,9 +270,9 @@ export default function QuickFillPage() {
   function handleAiSuggest() {
     setAiLoading(true)
     setAiResults(null)
-    // Simulate AI processing
+    // Simulate AI processing - will be replaced with real Convex action
     setTimeout(() => {
-      setAiResults(MOCK_AI_SUGGESTIONS)
+      setAiResults([])
       setAiLoading(false)
     }, 1500)
   }
@@ -397,9 +336,6 @@ export default function QuickFillPage() {
                       <SelectTrigger><SelectValue placeholder="Any provider" /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="any">Any Provider</SelectItem>
-                        <SelectItem value="dr-chen">Dr. Sarah Chen</SelectItem>
-                        <SelectItem value="dr-torres">Dr. Michael Torres</SelectItem>
-                        <SelectItem value="jessica-park">Jessica Park, RDH</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -409,10 +345,6 @@ export default function QuickFillPage() {
                       <SelectTrigger><SelectValue placeholder="Any operatory" /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="any">Any Operatory</SelectItem>
-                        <SelectItem value="op1">Operatory 1</SelectItem>
-                        <SelectItem value="op2">Operatory 2</SelectItem>
-                        <SelectItem value="op3">Operatory 3</SelectItem>
-                        <SelectItem value="hyg-a">Hygiene Bay A</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -438,35 +370,41 @@ export default function QuickFillPage() {
               )}
               {aiResults && (
                 <div className="space-y-3">
-                  <p className="text-sm font-medium text-muted-foreground">Top 3 Recommended Patients</p>
-                  {aiResults.map((suggestion, idx) => (
-                    <Card key={idx} className="py-3">
-                      <CardContent className="space-y-2">
-                        <div className="flex items-start justify-between">
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <span className="font-semibold">{suggestion.patientName}</span>
-                              <Badge className={priorityColor(suggestion.score)}>
-                                Score: {suggestion.score}
-                              </Badge>
+                  {aiResults.length === 0 ? (
+                    <p className="py-4 text-center text-sm text-muted-foreground">No AI suggestions available yet. Connect the AI integration to enable this feature.</p>
+                  ) : (
+                    <>
+                      <p className="text-sm font-medium text-muted-foreground">Top Recommended Patients</p>
+                      {aiResults.map((suggestion, idx) => (
+                        <Card key={idx} className="py-3">
+                          <CardContent className="space-y-2">
+                            <div className="flex items-start justify-between">
+                              <div>
+                                <div className="flex items-center gap-2">
+                                  <span className="font-semibold">{suggestion.patientName}</span>
+                                  <Badge className={priorityColor(suggestion.score)}>
+                                    Score: {suggestion.score}
+                                  </Badge>
+                                </div>
+                                <p className="text-sm text-muted-foreground">{suggestion.appointmentType}</p>
+                              </div>
+                              <div className="flex items-center gap-1 text-sm font-semibold text-emerald-600">
+                                <DollarSign className="size-3.5" />
+                                {suggestion.estimatedValue.toLocaleString()}
+                              </div>
                             </div>
-                            <p className="text-sm text-muted-foreground">{suggestion.appointmentType}</p>
-                          </div>
-                          <div className="flex items-center gap-1 text-sm font-semibold text-emerald-600">
-                            <DollarSign className="size-3.5" />
-                            {suggestion.estimatedValue.toLocaleString()}
-                          </div>
-                        </div>
-                        <div className="rounded-md bg-muted/50 p-2">
-                          <p className="text-xs text-muted-foreground italic">{suggestion.rationale}</p>
-                        </div>
-                        <Button size="sm" className="w-full">
-                          <CalendarPlus className="mr-1 size-3.5" />
-                          Schedule This Patient
-                        </Button>
-                      </CardContent>
-                    </Card>
-                  ))}
+                            <div className="rounded-md bg-muted/50 p-2">
+                              <p className="text-xs text-muted-foreground italic">{suggestion.rationale}</p>
+                            </div>
+                            <Button size="sm" className="w-full">
+                              <CalendarPlus className="mr-1 size-3.5" />
+                              Schedule This Patient
+                            </Button>
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </>
+                  )}
                 </div>
               )}
             </DialogContent>
@@ -579,16 +517,6 @@ export default function QuickFillPage() {
         </div>
       </div>
 
-      {convexError && (
-        <Card className="border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/30">
-          <CardContent className="pt-6">
-            <p className="text-sm text-amber-800 dark:text-amber-200">
-              Convex backend is not connected. Displaying mock data for preview.
-            </p>
-          </CardContent>
-        </Card>
-      )}
-
       {/* Stats Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card className="py-3">
@@ -671,80 +599,84 @@ export default function QuickFillPage() {
             </Select>
           </div>
 
-          <div className="rounded-md border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-[80px]">Priority</TableHead>
-                  <TableHead>Patient Name</TableHead>
-                  <TableHead>Appointment Type</TableHead>
-                  <TableHead>Preferred Days</TableHead>
-                  <TableHead>Preferred Times</TableHead>
-                  <TableHead>Urgency</TableHead>
-                  <TableHead className="text-right">Wait (days)</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-center">Attempts</TableHead>
-                  <TableHead className="w-[120px]">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredQueue.length === 0 ? (
+          {items.length === 0 ? (
+            <DataEmptyState resource="quick fill entries" message="No patients are in the quick fill queue yet. Add patients who want to be seen sooner." />
+          ) : (
+            <div className="rounded-md border">
+              <Table>
+                <TableHeader>
                   <TableRow>
-                    <TableCell colSpan={10} className="h-24 text-center text-muted-foreground">
-                      No patients in queue.
-                    </TableCell>
+                    <TableHead className="w-[80px]">Priority</TableHead>
+                    <TableHead>Patient Name</TableHead>
+                    <TableHead>Appointment Type</TableHead>
+                    <TableHead>Preferred Days</TableHead>
+                    <TableHead>Preferred Times</TableHead>
+                    <TableHead>Urgency</TableHead>
+                    <TableHead className="text-right">Wait (days)</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-center">Attempts</TableHead>
+                    <TableHead className="w-[120px]">Actions</TableHead>
                   </TableRow>
-                ) : (
-                  filteredQueue.map((item) => (
-                    <TableRow key={item._id}>
-                      <TableCell>
-                        <Badge className={priorityColor(item.priorityScore)}>
-                          {item.priorityScore}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="font-medium">{item.patientName}</TableCell>
-                      <TableCell>{item.appointmentType}</TableCell>
-                      <TableCell>
-                        <span className="text-sm text-muted-foreground">
-                          {item.preferredDays.map((d) => d.slice(0, 3)).join(", ")}
-                        </span>
-                      </TableCell>
-                      <TableCell>
-                        <span className="text-sm text-muted-foreground">
-                          {item.preferredTimes.join(", ")}
-                        </span>
-                      </TableCell>
-                      <TableCell>
-                        <Badge className={urgencyBadge(item.urgency)}>
-                          {item.urgency}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right">{item.waitDays}</TableCell>
-                      <TableCell>
-                        <Badge className={statusBadge(item.status)}>
-                          {item.status}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-center">{item.contactAttempts}</TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-1">
-                          <Button variant="ghost" size="icon-xs" title="Contact">
-                            <Phone className="size-3.5" />
-                          </Button>
-                          <Button variant="ghost" size="icon-xs" title="Schedule">
-                            <CalendarPlus className="size-3.5" />
-                          </Button>
-                          <Button variant="ghost" size="icon-xs" title="Remove">
-                            <X className="size-3.5" />
-                          </Button>
-                        </div>
+                </TableHeader>
+                <TableBody>
+                  {filteredQueue.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={10} className="h-24 text-center text-muted-foreground">
+                        No patients match your filters.
                       </TableCell>
                     </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </div>
+                  ) : (
+                    filteredQueue.map((item) => (
+                      <TableRow key={item._id}>
+                        <TableCell>
+                          <Badge className={priorityColor(item.priorityScore || 0)}>
+                            {item.priorityScore || 0}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="font-medium">{item.patientName}</TableCell>
+                        <TableCell>{item.appointmentType}</TableCell>
+                        <TableCell>
+                          <span className="text-sm text-muted-foreground">
+                            {(item.preferredDays || []).map((d: string) => d.slice(0, 3)).join(", ")}
+                          </span>
+                        </TableCell>
+                        <TableCell>
+                          <span className="text-sm text-muted-foreground">
+                            {(item.preferredTimes || []).join(", ")}
+                          </span>
+                        </TableCell>
+                        <TableCell>
+                          <Badge className={urgencyBadge(item.urgency || "routine")}>
+                            {item.urgency || "routine"}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right">{item.waitDays || 0}</TableCell>
+                        <TableCell>
+                          <Badge className={statusBadge(item.status || "waiting")}>
+                            {item.status || "waiting"}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-center">{item.contactAttempts || 0}</TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-1">
+                            <Button variant="ghost" size="icon-xs" title="Contact">
+                              <Phone className="size-3.5" />
+                            </Button>
+                            <Button variant="ghost" size="icon-xs" title="Schedule">
+                              <CalendarPlus className="size-3.5" />
+                            </Button>
+                            <Button variant="ghost" size="icon-xs" title="Remove">
+                              <X className="size-3.5" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -766,58 +698,111 @@ export default function QuickFillPage() {
 
             {/* Overdue Hygiene Tab */}
             <TabsContent value="overdue-hygiene" className="mt-4">
-              <div className="mb-4 flex items-center gap-3">
-                <Label className="text-sm font-medium">Filter by overdue:</Label>
-                <Select value={overdueFilter} onValueChange={setOverdueFilter}>
-                  <SelectTrigger className="w-[180px]">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Overdue</SelectItem>
-                    <SelectItem value="3">3+ Months</SelectItem>
-                    <SelectItem value="6">6+ Months</SelectItem>
-                    <SelectItem value="9">9+ Months</SelectItem>
-                    <SelectItem value="12">12+ Months</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="rounded-md border">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Patient Name</TableHead>
-                      <TableHead>Last Hygiene Date</TableHead>
-                      <TableHead className="text-right">Months Overdue</TableHead>
-                      <TableHead>Phone</TableHead>
-                      <TableHead>Insurance</TableHead>
-                      <TableHead className="text-right">Est. Value</TableHead>
-                      <TableHead className="w-[140px]">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredOverdue.length === 0 ? (
+              {overdueHygiene.length === 0 ? (
+                <DataEmptyState resource="overdue hygiene patients" message="No overdue hygiene patients found. Data will appear after syncing patient records." />
+              ) : (
+                <>
+                  <div className="mb-4 flex items-center gap-3">
+                    <Label className="text-sm font-medium">Filter by overdue:</Label>
+                    <Select value={overdueFilter} onValueChange={setOverdueFilter}>
+                      <SelectTrigger className="w-[180px]">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Overdue</SelectItem>
+                        <SelectItem value="3">3+ Months</SelectItem>
+                        <SelectItem value="6">6+ Months</SelectItem>
+                        <SelectItem value="9">9+ Months</SelectItem>
+                        <SelectItem value="12">12+ Months</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="rounded-md border">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Patient Name</TableHead>
+                          <TableHead>Last Hygiene Date</TableHead>
+                          <TableHead className="text-right">Months Overdue</TableHead>
+                          <TableHead>Phone</TableHead>
+                          <TableHead>Insurance</TableHead>
+                          <TableHead className="text-right">Est. Value</TableHead>
+                          <TableHead className="w-[140px]">Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredOverdue.length === 0 ? (
+                          <TableRow>
+                            <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
+                              No overdue hygiene patients found.
+                            </TableCell>
+                          </TableRow>
+                        ) : (
+                          filteredOverdue.map((patient: any) => (
+                            <TableRow key={patient.patientId || patient._id}>
+                              <TableCell className="font-medium">{patient.patientName}</TableCell>
+                              <TableCell className="text-muted-foreground">{patient.lastHygieneDate}</TableCell>
+                              <TableCell className="text-right">
+                                <Badge className={
+                                  (patient.monthsOverdue || 0) >= 12 ? "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400" :
+                                  (patient.monthsOverdue || 0) >= 6 ? "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400" :
+                                  "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400"
+                                }>
+                                  {patient.monthsOverdue || 0}
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="text-muted-foreground">{patient.phone}</TableCell>
+                              <TableCell>{patient.insurance}</TableCell>
+                              <TableCell className="text-right font-medium">${patient.estimatedValue || 0}</TableCell>
+                              <TableCell>
+                                <div className="flex items-center gap-1">
+                                  <Button variant="outline" size="xs">
+                                    <CalendarPlus className="mr-1 size-3" />
+                                    Schedule
+                                  </Button>
+                                  <Button variant="ghost" size="xs">
+                                    <Plus className="mr-1 size-3" />
+                                    QF
+                                  </Button>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          ))
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </>
+              )}
+            </TabsContent>
+
+            {/* Unscheduled Treatment Tab */}
+            <TabsContent value="unscheduled-tx" className="mt-4">
+              {unscheduledTx.length === 0 ? (
+                <DataEmptyState resource="unscheduled treatments" message="No unscheduled treatments found. Data will appear after syncing treatment plans." />
+              ) : (
+                <div className="rounded-md border">
+                  <Table>
+                    <TableHeader>
                       <TableRow>
-                        <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
-                          No overdue hygiene patients found.
-                        </TableCell>
+                        <TableHead>Patient Name</TableHead>
+                        <TableHead>Treatment Needed</TableHead>
+                        <TableHead>Treatment Plan Date</TableHead>
+                        <TableHead className="text-right">Est. Value</TableHead>
+                        <TableHead>Insurance Coverage</TableHead>
+                        <TableHead className="w-[140px]">Actions</TableHead>
                       </TableRow>
-                    ) : (
-                      filteredOverdue.map((patient) => (
-                        <TableRow key={patient.patientId}>
-                          <TableCell className="font-medium">{patient.patientName}</TableCell>
-                          <TableCell className="text-muted-foreground">{patient.lastHygieneDate}</TableCell>
-                          <TableCell className="text-right">
-                            <Badge className={
-                              patient.monthsOverdue >= 12 ? "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400" :
-                              patient.monthsOverdue >= 6 ? "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400" :
-                              "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400"
-                            }>
-                              {patient.monthsOverdue}
-                            </Badge>
+                    </TableHeader>
+                    <TableBody>
+                      {unscheduledTx.map((tx: any) => (
+                        <TableRow key={tx.patientId || tx._id}>
+                          <TableCell className="font-medium">{tx.patientName}</TableCell>
+                          <TableCell>{tx.treatment}</TableCell>
+                          <TableCell className="text-muted-foreground">{tx.planDate}</TableCell>
+                          <TableCell className="text-right font-medium">${(tx.estimatedValue || 0).toLocaleString()}</TableCell>
+                          <TableCell>
+                            <Badge variant="outline">{tx.insuranceCoverage}</Badge>
                           </TableCell>
-                          <TableCell className="text-muted-foreground">{patient.phone}</TableCell>
-                          <TableCell>{patient.insurance}</TableCell>
-                          <TableCell className="text-right font-medium">${patient.estimatedValue}</TableCell>
                           <TableCell>
                             <div className="flex items-center gap-1">
                               <Button variant="outline" size="xs">
@@ -825,105 +810,66 @@ export default function QuickFillPage() {
                                 Schedule
                               </Button>
                               <Button variant="ghost" size="xs">
-                                <Plus className="mr-1 size-3" />
-                                QF
+                                <Phone className="mr-1 size-3" />
+                                Call
                               </Button>
                             </div>
                           </TableCell>
                         </TableRow>
-                      ))
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
-            </TabsContent>
-
-            {/* Unscheduled Treatment Tab */}
-            <TabsContent value="unscheduled-tx" className="mt-4">
-              <div className="rounded-md border">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Patient Name</TableHead>
-                      <TableHead>Treatment Needed</TableHead>
-                      <TableHead>Treatment Plan Date</TableHead>
-                      <TableHead className="text-right">Est. Value</TableHead>
-                      <TableHead>Insurance Coverage</TableHead>
-                      <TableHead className="w-[140px]">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {MOCK_UNSCHEDULED_TX.map((tx) => (
-                      <TableRow key={tx.patientId}>
-                        <TableCell className="font-medium">{tx.patientName}</TableCell>
-                        <TableCell>{tx.treatment}</TableCell>
-                        <TableCell className="text-muted-foreground">{tx.planDate}</TableCell>
-                        <TableCell className="text-right font-medium">${tx.estimatedValue.toLocaleString()}</TableCell>
-                        <TableCell>
-                          <Badge variant="outline">{tx.insuranceCoverage}</Badge>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-1">
-                            <Button variant="outline" size="xs">
-                              <CalendarPlus className="mr-1 size-3" />
-                              Schedule
-                            </Button>
-                            <Button variant="ghost" size="xs">
-                              <Phone className="mr-1 size-3" />
-                              Call
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
             </TabsContent>
 
             {/* ASAP List Tab */}
             <TabsContent value="asap" className="mt-4">
-              <div className="rounded-md border">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Patient Name</TableHead>
-                      <TableHead>Reason</TableHead>
-                      <TableHead>Date Added</TableHead>
-                      <TableHead>Priority</TableHead>
-                      <TableHead>Phone</TableHead>
-                      <TableHead className="w-[140px]">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {MOCK_ASAP.map((item) => (
-                      <TableRow key={item.patientId}>
-                        <TableCell className="font-medium">{item.patientName}</TableCell>
-                        <TableCell>{item.reason}</TableCell>
-                        <TableCell className="text-muted-foreground">{item.dateAdded}</TableCell>
-                        <TableCell>
-                          <Badge className={asapPriorityBadge(item.priority)}>
-                            {item.priority}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-muted-foreground">{item.phone}</TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-1">
-                            <Button variant="outline" size="xs">
-                              <CalendarPlus className="mr-1 size-3" />
-                              Schedule
-                            </Button>
-                            <Button variant="ghost" size="xs">
-                              <Phone className="mr-1 size-3" />
-                              Contact
-                            </Button>
-                          </div>
-                        </TableCell>
+              {asapItems.length === 0 ? (
+                <DataEmptyState resource="ASAP patients" message="No patients on the ASAP list. Patients flagged for urgent scheduling will appear here." />
+              ) : (
+                <div className="rounded-md border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Patient Name</TableHead>
+                        <TableHead>Reason</TableHead>
+                        <TableHead>Date Added</TableHead>
+                        <TableHead>Priority</TableHead>
+                        <TableHead>Phone</TableHead>
+                        <TableHead className="w-[140px]">Actions</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
+                    </TableHeader>
+                    <TableBody>
+                      {asapItems.map((item: any) => (
+                        <TableRow key={item.patientId || item._id}>
+                          <TableCell className="font-medium">{item.patientName}</TableCell>
+                          <TableCell>{item.reason}</TableCell>
+                          <TableCell className="text-muted-foreground">{item.dateAdded}</TableCell>
+                          <TableCell>
+                            <Badge className={asapPriorityBadge(item.priority || "routine")}>
+                              {item.priority || "routine"}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">{item.phone}</TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-1">
+                              <Button variant="outline" size="xs">
+                                <CalendarPlus className="mr-1 size-3" />
+                                Schedule
+                              </Button>
+                              <Button variant="ghost" size="xs">
+                                <Phone className="mr-1 size-3" />
+                                Contact
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
             </TabsContent>
           </Tabs>
         </CardContent>

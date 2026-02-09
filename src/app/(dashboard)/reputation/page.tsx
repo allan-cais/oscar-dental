@@ -337,7 +337,7 @@ export default function ReputationPage() {
   let convexError = false
   try {
     // eslint-disable-next-line react-hooks/rules-of-hooks
-    useQuery(api.reputation?.queries?.dashboard as any)
+    useQuery(api.reputation?.queries?.getDashboard as any)
   } catch {
     convexError = true
   }

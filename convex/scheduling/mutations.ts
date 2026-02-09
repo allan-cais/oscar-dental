@@ -1,6 +1,8 @@
 import { mutation } from "../_generated/server";
+import { internal } from "../_generated/api";
 import { v } from "convex/values";
 import { getOrgId } from "../lib/auth";
+import type { MutationCtx } from "../_generated/server";
 
 // Valid status transitions: from -> allowed targets
 const VALID_TRANSITIONS: Record<string, string[]> = {
@@ -13,6 +15,46 @@ const VALID_TRANSITIONS: Record<string, string[]> = {
   cancelled: [],
   no_show: [],
 };
+
+/**
+ * Schedule push sync to NexHealth after an appointment mutation.
+ * All PMS types (OpenDental, Eaglesoft, Dentrix) are accessed via NexHealth
+ * with identical read/write capabilities. If NexHealth is configured, push
+ * directly. If no config exists, no-op.
+ */
+async function schedulePushSync(
+  ctx: MutationCtx,
+  params: {
+    appointmentId: string;
+    orgId: string;
+    practiceId: string;
+    operation: "create" | "update" | "cancel";
+    appointmentSummary?: string;
+  }
+) {
+  // Check if NexHealth is configured for this practice
+  const config = await ctx.db
+    .query("nexhealthConfigs")
+    .withIndex("by_practice", (q: any) =>
+      q.eq("orgId", params.orgId).eq("practiceId", params.practiceId)
+    )
+    .filter((q: any) => q.eq(q.field("isActive"), true))
+    .first();
+
+  if (!config) return;
+
+  // Push directly to NexHealth — all PMS types have identical capabilities
+  await ctx.scheduler.runAfter(
+    0,
+    internal.nexhealth.actions.pushAppointment,
+    {
+      appointmentId: params.appointmentId as any,
+      orgId: params.orgId,
+      practiceId: params.practiceId as any,
+      operation: params.operation,
+    }
+  );
+}
 
 /**
  * Create a new appointment.
@@ -101,6 +143,17 @@ export const create = mutation({
       updatedAt: now,
     });
 
+    // Push sync to NexHealth (if configured)
+    if (!args.pmsAppointmentId) {
+      await schedulePushSync(ctx, {
+        appointmentId: appointmentId as string,
+        orgId,
+        practiceId: args.practiceId as string,
+        operation: "create",
+        appointmentSummary: `${args.date} ${args.startTime} (${args.duration}min)`,
+      });
+    }
+
     return appointmentId;
   },
 });
@@ -166,6 +219,15 @@ export const update = mutation({
     }
 
     await ctx.db.patch(appointmentId, updates);
+
+    // Push sync to NexHealth (if configured)
+    await schedulePushSync(ctx, {
+      appointmentId: appointmentId as string,
+      orgId,
+      practiceId: appointment.practiceId as string,
+      operation: "update",
+    });
+
     return appointmentId;
   },
 });
@@ -241,6 +303,17 @@ export const updateStatus = mutation({
     }
 
     await ctx.db.patch(args.appointmentId, updates);
+
+    // Push status change to NexHealth for cancellations
+    if (targetStatus === "cancelled") {
+      await schedulePushSync(ctx, {
+        appointmentId: args.appointmentId as string,
+        orgId,
+        practiceId: appointment.practiceId as string,
+        operation: "cancel",
+      });
+    }
+
     return args.appointmentId;
   },
 });
@@ -276,6 +349,15 @@ export const cancel = mutation({
       cancelledAt: now,
       cancellationReason: args.cancellationReason,
       updatedAt: now,
+    });
+
+    // Push cancel to NexHealth (if configured)
+    await schedulePushSync(ctx, {
+      appointmentId: args.appointmentId as string,
+      orgId,
+      practiceId: appointment.practiceId as string,
+      operation: "cancel",
+      appointmentSummary: `Reason: ${args.cancellationReason}`,
     });
 
     return args.appointmentId;

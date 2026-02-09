@@ -232,7 +232,7 @@ export default function ReviewRequestsPage() {
   let convexError = false
   try {
     // eslint-disable-next-line react-hooks/rules-of-hooks
-    useQuery(api.reputation.queries.listReviewRequests)
+    useQuery(api.reviewRequests.queries.list, {})
   } catch {
     convexError = true
   }

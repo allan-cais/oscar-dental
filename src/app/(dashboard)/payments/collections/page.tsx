@@ -1,8 +1,9 @@
 "use client"
 
-import { useState, useMemo } from "react"
-import { useQuery } from "convex/react"
+import { useState, useMemo, Fragment } from "react"
+import { useQuery, useMutation } from "convex/react"
 import { api } from "../../../../../convex/_generated/api"
+import type { Id } from "../../../../../convex/_generated/dataModel"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -47,6 +48,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Separator } from "@/components/ui/separator"
+import { Skeleton } from "@/components/ui/skeleton"
 import { toast } from "sonner"
 import {
   Search,
@@ -81,7 +83,7 @@ interface StepHistoryEntry {
 }
 
 interface CollectionSequence {
-  id: string
+  convexId: Id<"collectionSequences">
   patientName: string
   patientPhone: string
   patientEmail: string
@@ -93,7 +95,6 @@ interface CollectionSequence {
   lastAction: string
   nextActionDate: string
   status: SequenceStatus
-  relatedClaims: string[]
   stepHistory: StepHistoryEntry[]
 }
 
@@ -109,6 +110,19 @@ const STEP_CONFIG: Record<CollectionStep, { label: string; day: number; color: s
   final_notice: { label: "Final Notice", day: 60, color: "text-orange-700 dark:text-orange-400",   bgColor: "bg-orange-100 dark:bg-orange-900/40",    icon: Send },
   agency:       { label: "Agency",       day: 90, color: "text-red-700 dark:text-red-400",         bgColor: "bg-red-100 dark:bg-red-900/40",          icon: Building2 },
 }
+
+// Map backend day numbers → frontend CollectionStep names
+const STEP_DAY_TO_NAME: Record<number, CollectionStep> = {
+  0: "statement",
+  7: "sms",
+  14: "email",
+  30: "phone",
+  60: "final_notice",
+  90: "agency",
+}
+
+// Map backend day numbers → STEP_CONFIG array indices (for steps[] access)
+const STEP_DAYS = [0, 7, 14, 30, 60, 90]
 
 function statusBadge(status: SequenceStatus) {
   switch (status) {
@@ -136,196 +150,76 @@ function formatCurrency(amount: number) {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(amount)
 }
 
-// ─── Mock Data ────────────────────────────────────────────────────────────────
+// ─── Mapping Layer ───────────────────────────────────────────────────────────
 
-const MOCK_SEQUENCES: CollectionSequence[] = [
-  // Day 0 - Statement (3)
-  {
-    id: "seq_1", patientName: "Robert Thompson", patientPhone: "(555) 234-5678", patientEmail: "robert.t@email.com",
-    balance: 425.00, currentStep: "statement", dayInStep: 0, daysActive: 0, contactAttempts: 1,
-    lastAction: "Statement mailed", nextActionDate: "2026-02-13", status: "active",
-    relatedClaims: ["CLM-2024-001"],
-    stepHistory: [{ step: "statement", date: "2026-02-06", action: "Statement generated and mailed", result: "Delivered" }],
-  },
-  {
-    id: "seq_2", patientName: "Maria Garcia", patientPhone: "(555) 345-6789", patientEmail: "maria.g@email.com",
-    balance: 187.50, currentStep: "statement", dayInStep: 2, daysActive: 2, contactAttempts: 1,
-    lastAction: "Statement mailed", nextActionDate: "2026-02-11", status: "active",
-    relatedClaims: ["CLM-2024-015"],
-    stepHistory: [{ step: "statement", date: "2026-02-04", action: "Statement generated and mailed", result: "Delivered" }],
-  },
-  {
-    id: "seq_3", patientName: "James Wilson", patientPhone: "(555) 456-7890", patientEmail: "james.w@email.com",
-    balance: 892.00, currentStep: "statement", dayInStep: 5, daysActive: 5, contactAttempts: 1,
-    lastAction: "Statement mailed", nextActionDate: "2026-02-08", status: "active",
-    relatedClaims: ["CLM-2024-022", "CLM-2024-023"],
-    stepHistory: [{ step: "statement", date: "2026-02-01", action: "Statement generated and mailed", result: "Delivered" }],
-  },
-  // Day 7 - SMS (4)
-  {
-    id: "seq_4", patientName: "Patricia Johnson", patientPhone: "(555) 567-8901", patientEmail: "patricia.j@email.com",
-    balance: 315.00, currentStep: "sms", dayInStep: 0, daysActive: 7, contactAttempts: 2,
-    lastAction: "SMS reminder sent", nextActionDate: "2026-02-13", status: "active",
-    relatedClaims: ["CLM-2024-030"],
-    stepHistory: [
-      { step: "statement", date: "2026-01-30", action: "Statement generated and mailed", result: "Delivered" },
-      { step: "sms", date: "2026-02-06", action: "Payment reminder SMS sent", result: "Delivered" },
-    ],
-  },
-  {
-    id: "seq_5", patientName: "William Brown", patientPhone: "(555) 678-9012", patientEmail: "william.b@email.com",
-    balance: 1250.00, currentStep: "sms", dayInStep: 3, daysActive: 10, contactAttempts: 2,
-    lastAction: "SMS reminder sent", nextActionDate: "2026-02-10", status: "active",
-    relatedClaims: ["CLM-2024-035", "CLM-2024-036"],
-    stepHistory: [
-      { step: "statement", date: "2026-01-27", action: "Statement generated and mailed", result: "Delivered" },
-      { step: "sms", date: "2026-02-03", action: "Payment reminder SMS sent", result: "Delivered" },
-    ],
-  },
-  {
-    id: "seq_6", patientName: "Jennifer Davis", patientPhone: "(555) 789-0123", patientEmail: "jennifer.d@email.com",
-    balance: 560.00, currentStep: "sms", dayInStep: 5, daysActive: 12, contactAttempts: 3,
-    lastAction: "Follow-up SMS sent", nextActionDate: "2026-02-08", status: "active",
-    relatedClaims: ["CLM-2024-040"],
-    stepHistory: [
-      { step: "statement", date: "2026-01-25", action: "Statement generated and mailed", result: "Delivered" },
-      { step: "sms", date: "2026-02-01", action: "Payment reminder SMS sent", result: "Delivered" },
-      { step: "sms", date: "2026-02-04", action: "Follow-up SMS sent", result: "Delivered" },
-    ],
-  },
-  {
-    id: "seq_7", patientName: "Charles Martinez", patientPhone: "(555) 890-1234", patientEmail: "charles.m@email.com",
-    balance: 275.00, currentStep: "sms", dayInStep: 2, daysActive: 9, contactAttempts: 2,
-    lastAction: "SMS reminder sent", nextActionDate: "2026-02-11", status: "paused",
-    relatedClaims: ["CLM-2024-042"],
-    stepHistory: [
-      { step: "statement", date: "2026-01-28", action: "Statement generated and mailed", result: "Delivered" },
-      { step: "sms", date: "2026-02-04", action: "Payment reminder SMS sent", result: "Delivered" },
-    ],
-  },
-  // Day 14 - Email (3)
-  {
-    id: "seq_8", patientName: "Linda Anderson", patientPhone: "(555) 901-2345", patientEmail: "linda.a@email.com",
-    balance: 743.00, currentStep: "email", dayInStep: 0, daysActive: 14, contactAttempts: 3,
-    lastAction: "Collection email sent", nextActionDate: "2026-02-20", status: "active",
-    relatedClaims: ["CLM-2024-050"],
-    stepHistory: [
-      { step: "statement", date: "2026-01-23", action: "Statement generated and mailed", result: "Delivered" },
-      { step: "sms", date: "2026-01-30", action: "Payment reminder SMS sent", result: "Delivered" },
-      { step: "email", date: "2026-02-06", action: "Collection email sent", result: "Opened" },
-    ],
-  },
-  {
-    id: "seq_9", patientName: "Richard Taylor", patientPhone: "(555) 012-3456", patientEmail: "richard.t@email.com",
-    balance: 1100.00, currentStep: "email", dayInStep: 5, daysActive: 19, contactAttempts: 4,
-    lastAction: "Follow-up email sent", nextActionDate: "2026-02-15", status: "active",
-    relatedClaims: ["CLM-2024-055", "CLM-2024-056"],
-    stepHistory: [
-      { step: "statement", date: "2026-01-18", action: "Statement generated and mailed", result: "Delivered" },
-      { step: "sms", date: "2026-01-25", action: "Payment reminder SMS sent", result: "Delivered" },
-      { step: "email", date: "2026-02-01", action: "Collection email sent", result: "Opened" },
-      { step: "email", date: "2026-02-04", action: "Follow-up email sent", result: "No response" },
-    ],
-  },
-  {
-    id: "seq_10", patientName: "Susan Thomas", patientPhone: "(555) 123-4567", patientEmail: "susan.t@email.com",
-    balance: 389.00, currentStep: "email", dayInStep: 10, daysActive: 24, contactAttempts: 4,
-    lastAction: "Second email sent", nextActionDate: "2026-02-10", status: "active",
-    relatedClaims: ["CLM-2024-060"],
-    stepHistory: [
-      { step: "statement", date: "2026-01-13", action: "Statement generated and mailed", result: "Delivered" },
-      { step: "sms", date: "2026-01-20", action: "Payment reminder SMS sent", result: "Failed - invalid number" },
-      { step: "email", date: "2026-01-27", action: "Collection email sent", result: "Opened" },
-      { step: "email", date: "2026-02-02", action: "Second collection email sent", result: "No response" },
-    ],
-  },
-  // Day 30 - Phone Call (2)
-  {
-    id: "seq_11", patientName: "David Jackson", patientPhone: "(555) 234-5679", patientEmail: "david.j@email.com",
-    balance: 2150.00, currentStep: "phone", dayInStep: 5, daysActive: 35, contactAttempts: 6,
-    lastAction: "Left voicemail", nextActionDate: "2026-02-12", status: "active",
-    relatedClaims: ["CLM-2024-065", "CLM-2024-066", "CLM-2024-067"],
-    stepHistory: [
-      { step: "statement", date: "2026-01-02", action: "Statement generated and mailed", result: "Delivered" },
-      { step: "sms", date: "2026-01-09", action: "Payment reminder SMS sent", result: "Delivered" },
-      { step: "email", date: "2026-01-16", action: "Collection email sent", result: "Bounced" },
-      { step: "email", date: "2026-01-20", action: "Updated email and resent", result: "Opened" },
-      { step: "phone", date: "2026-02-01", action: "Phone call - no answer", result: "Left voicemail" },
-      { step: "phone", date: "2026-02-05", action: "Phone call - no answer", result: "Left voicemail" },
-    ],
-  },
-  {
-    id: "seq_12", patientName: "Karen White", patientPhone: "(555) 345-6780", patientEmail: "karen.w@email.com",
-    balance: 975.00, currentStep: "phone", dayInStep: 12, daysActive: 42, contactAttempts: 7,
-    lastAction: "Spoke with patient - promised payment", nextActionDate: "2026-02-15", status: "active",
-    relatedClaims: ["CLM-2024-070"],
-    stepHistory: [
-      { step: "statement", date: "2025-12-26", action: "Statement generated and mailed", result: "Delivered" },
-      { step: "sms", date: "2026-01-02", action: "Payment reminder SMS sent", result: "Delivered" },
-      { step: "sms", date: "2026-01-05", action: "Follow-up SMS sent", result: "Delivered" },
-      { step: "email", date: "2026-01-09", action: "Collection email sent", result: "Opened" },
-      { step: "phone", date: "2026-01-25", action: "Phone call - no answer", result: "Left voicemail" },
-      { step: "phone", date: "2026-01-30", action: "Phone call - spoke with patient", result: "Promised payment by Feb 15" },
-      { step: "phone", date: "2026-02-05", action: "Follow-up call", result: "Confirmed payment coming" },
-    ],
-  },
-  // Day 60 - Final Notice (2)
-  {
-    id: "seq_13", patientName: "Daniel Harris", patientPhone: "(555) 456-7891", patientEmail: "daniel.h@email.com",
-    balance: 3200.00, currentStep: "final_notice", dayInStep: 8, daysActive: 68, contactAttempts: 9,
-    lastAction: "Final notice mailed (certified)", nextActionDate: "2026-02-18", status: "active",
-    relatedClaims: ["CLM-2024-075", "CLM-2024-076"],
-    stepHistory: [
-      { step: "statement", date: "2025-11-30", action: "Statement generated and mailed", result: "Delivered" },
-      { step: "sms", date: "2025-12-07", action: "Payment reminder SMS sent", result: "Delivered" },
-      { step: "email", date: "2025-12-14", action: "Collection email sent", result: "No response" },
-      { step: "phone", date: "2025-12-30", action: "Phone call - no answer", result: "Left voicemail" },
-      { step: "phone", date: "2026-01-05", action: "Phone call - disconnected", result: "Could not reach" },
-      { step: "final_notice", date: "2026-01-29", action: "Final notice mailed via certified mail", result: "Pending delivery confirmation" },
-    ],
-  },
-  {
-    id: "seq_14", patientName: "Nancy Clark", patientPhone: "(555) 567-8902", patientEmail: "nancy.c@email.com",
-    balance: 1450.00, currentStep: "final_notice", dayInStep: 3, daysActive: 63, contactAttempts: 8,
-    lastAction: "Final notice email and letter sent", nextActionDate: "2026-02-25", status: "active",
-    relatedClaims: ["CLM-2024-080"],
-    stepHistory: [
-      { step: "statement", date: "2025-12-05", action: "Statement generated and mailed", result: "Delivered" },
-      { step: "sms", date: "2025-12-12", action: "Payment reminder SMS sent", result: "Opted out (STOP)" },
-      { step: "email", date: "2025-12-19", action: "Collection email sent", result: "Opened" },
-      { step: "phone", date: "2026-01-04", action: "Phone call - spoke with patient", result: "Disputed charges" },
-      { step: "phone", date: "2026-01-10", action: "Phone call - provided itemized statement", result: "Patient reviewing" },
-      { step: "final_notice", date: "2026-02-03", action: "Final notice with itemized breakdown", result: "Sent via email and certified mail" },
-    ],
-  },
-  // Day 90 - Agency (1)
-  {
-    id: "seq_15", patientName: "George Lewis", patientPhone: "(555) 678-9013", patientEmail: "george.l@email.com",
-    balance: 4800.00, currentStep: "agency", dayInStep: 5, daysActive: 95, contactAttempts: 12,
-    lastAction: "Sent to ABC Collections Agency", nextActionDate: "2026-03-06", status: "sent_to_agency",
-    relatedClaims: ["CLM-2024-085", "CLM-2024-086", "CLM-2024-087"],
-    stepHistory: [
-      { step: "statement", date: "2025-11-03", action: "Statement generated and mailed", result: "Delivered" },
-      { step: "sms", date: "2025-11-10", action: "Payment reminder SMS sent", result: "Delivered" },
-      { step: "email", date: "2025-11-17", action: "Collection email sent", result: "Bounced" },
-      { step: "phone", date: "2025-12-03", action: "Phone call - no answer", result: "Left voicemail x3" },
-      { step: "final_notice", date: "2025-12-31", action: "Final notice mailed certified", result: "Returned unclaimed" },
-      { step: "agency", date: "2026-02-01", action: "Account transferred to ABC Collections Agency", result: "Agency acknowledged receipt" },
-    ],
-  },
-  // Extra completed sequence
-  {
-    id: "seq_16", patientName: "Betty Robinson", patientPhone: "(555) 789-0124", patientEmail: "betty.r@email.com",
-    balance: 0, currentStep: "sms", dayInStep: 3, daysActive: 10, contactAttempts: 2,
-    lastAction: "Payment received in full", nextActionDate: "-", status: "completed",
-    relatedClaims: ["CLM-2024-090"],
-    stepHistory: [
-      { step: "statement", date: "2026-01-27", action: "Statement generated and mailed", result: "Delivered" },
-      { step: "sms", date: "2026-02-03", action: "Payment reminder SMS sent", result: "Delivered" },
-      { step: "sms", date: "2026-02-05", action: "Patient paid in full via Text-to-Pay link", result: "Payment confirmed - $650.00" },
-    ],
-  },
-]
+function mapConvexSequence(doc: any): CollectionSequence {
+  const now = Date.now()
+  const currentStepDay: number = doc.currentStep ?? 0
+  const stepName = STEP_DAY_TO_NAME[currentStepDay] ?? "statement"
+
+  // Compute days active from startedAt
+  const daysActive = Math.max(0, Math.round((now - (doc.startedAt ?? doc.createdAt)) / (1000 * 60 * 60 * 24)))
+
+  // Compute day within current step
+  const dayInStep = Math.max(0, daysActive - currentStepDay)
+
+  // Count contact attempts (non-pending steps)
+  const steps: any[] = doc.steps ?? []
+  const contactAttempts = steps.filter((s: any) => s.status === "sent" || s.status === "completed").length
+
+  // Last action: find the most recent step with a sentAt
+  const sentSteps = steps.filter((s: any) => s.sentAt).sort((a: any, b: any) => (b.sentAt ?? 0) - (a.sentAt ?? 0))
+  const lastAction = sentSteps.length > 0 ? sentSteps[0].action : "Sequence started"
+
+  // Next action date: estimate based on next step day offset
+  const currentStepIndex = STEP_DAYS.indexOf(currentStepDay)
+  let nextActionDate = "-"
+  if (currentStepIndex >= 0 && currentStepIndex < STEP_DAYS.length - 1) {
+    const nextStepDay = STEP_DAYS[currentStepIndex + 1]
+    const nextDate = new Date((doc.startedAt ?? doc.createdAt) + nextStepDay * 24 * 60 * 60 * 1000)
+    nextActionDate = nextDate.toISOString().split("T")[0]
+  }
+
+  // Map status: backend "paid" → "completed", backend "completed" at step 90 → "sent_to_agency"
+  let mappedStatus: SequenceStatus = doc.status as SequenceStatus
+  if (doc.status === "paid") {
+    mappedStatus = "completed"
+  } else if (doc.status === "completed" && currentStepDay === 90) {
+    mappedStatus = "sent_to_agency"
+  }
+
+  // Build step history from steps[] array
+  const stepHistory: StepHistoryEntry[] = steps
+    .filter((s: any) => s.sentAt || s.status === "completed" || s.status === "sent")
+    .map((s: any) => ({
+      step: STEP_DAY_TO_NAME[s.day] ?? "statement",
+      date: s.sentAt ? new Date(s.sentAt).toISOString().split("T")[0] : "-",
+      action: s.action ?? "Unknown",
+      result: s.response ?? (s.status === "skipped" ? "Skipped" : s.status === "sent" ? "Sent" : "Completed"),
+    }))
+
+  // Patient info from joined data
+  const patient = doc.patient
+  const patientName = patient
+    ? `${patient.firstName ?? ""} ${patient.lastName ?? ""}`.trim() || "Unknown Patient"
+    : "Unknown Patient"
+
+  return {
+    convexId: doc._id as Id<"collectionSequences">,
+    patientName,
+    patientPhone: patient?.phone ?? "N/A",
+    patientEmail: patient?.email ?? "N/A",
+    balance: doc.totalBalance ?? 0,
+    currentStep: stepName,
+    dayInStep,
+    daysActive,
+    contactAttempts,
+    lastAction,
+    nextActionDate,
+    status: mappedStatus,
+    stepHistory,
+  }
+}
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -341,17 +235,22 @@ export default function CollectionsPage() {
     autoEscalation: true,
   })
 
-  // Try Convex, fall back to mock
-  let sequences: CollectionSequence[] | undefined
-  let convexError = false
-  try {
-    // eslint-disable-next-line react-hooks/rules-of-hooks
-    const result = useQuery(api.collections.queries.listSequences)
-    sequences = (result as CollectionSequence[] | undefined) ?? undefined
-  } catch {
-    convexError = true
-    sequences = MOCK_SEQUENCES
-  }
+  // Convex queries
+  const listResult = useQuery((api as any).collections.queries.list, {})
+  const statsResult = useQuery((api as any).collections.queries.getStats, {})
+
+  // Convex mutations
+  const pauseMutation = useMutation((api as any).collections.mutations.pause)
+  const resumeMutation = useMutation((api as any).collections.mutations.resume)
+  const recordPaymentMutation = useMutation((api as any).collections.mutations.recordPayment)
+
+  // Map backend data to frontend shape
+  const sequences: CollectionSequence[] | undefined = useMemo(() => {
+    if (!listResult) return undefined
+    return (listResult.sequences ?? []).map(mapConvexSequence)
+  }, [listResult])
+
+  const isLoading = sequences === undefined
 
   const filtered = useMemo(() => {
     if (!sequences) return []
@@ -364,36 +263,71 @@ export default function CollectionsPage() {
     })
   }, [sequences, search, statusFilter, stepFilter])
 
-  // Compute stats
+  // Stats from Convex query
   const stats = useMemo(() => {
-    const all = sequences ?? []
-    const active = all.filter((s) => s.status === "active" || s.status === "paused")
-    const totalOutstanding = all.filter((s) => s.status !== "completed").reduce((sum, s) => sum + s.balance, 0)
-    const avgDays = active.length > 0
-      ? Math.round(active.reduce((sum, s) => sum + s.daysActive, 0) / active.length)
+    if (!statsResult) {
+      return { activeCount: 0, totalOutstanding: 0, avgDays: 0, agencyCount: 0 }
+    }
+    // Count agency = sequences at step 90 that are completed
+    const agencyCount = sequences
+      ? sequences.filter((s) => s.status === "sent_to_agency").length
       : 0
-    const agencyCount = all.filter((s) => s.status === "sent_to_agency").length
-    return { activeCount: active.length, totalOutstanding, avgDays, agencyCount }
-  }, [sequences])
+    return {
+      activeCount: statsResult.totalActiveSequences ?? 0,
+      totalOutstanding: statsResult.totalOutstandingBalance ?? 0,
+      avgDays: statsResult.avgDaysToResolve ?? 0,
+      agencyCount,
+    }
+  }, [statsResult, sequences])
 
-  // Count by step for timeline
+  // Pipeline step counts from stats query
   const stepCounts = useMemo(() => {
-    const all = sequences ?? []
     const counts: Record<CollectionStep, number> = {
       statement: 0, sms: 0, email: 0, phone: 0, final_notice: 0, agency: 0,
     }
-    all.filter((s) => s.status === "active" || s.status === "paused").forEach((s) => {
-      counts[s.currentStep]++
-    })
+    if (!statsResult?.stepCounts) return counts
+    const rawCounts = statsResult.stepCounts as Record<string, number>
+    for (const [dayStr, count] of Object.entries(rawCounts)) {
+      const stepName = STEP_DAY_TO_NAME[Number(dayStr)]
+      if (stepName) {
+        counts[stepName] = count
+      }
+    }
     return counts
-  }, [sequences])
+  }, [statsResult])
 
-  function handleTogglePause(id: string) {
-    toast.success("Sequence status updated")
+  async function handleTogglePause(seq: CollectionSequence) {
+    try {
+      if (seq.status === "paused") {
+        await resumeMutation({ sequenceId: seq.convexId })
+        toast.success("Sequence resumed")
+      } else {
+        await pauseMutation({ sequenceId: seq.convexId })
+        toast.success("Sequence paused")
+      }
+    } catch (err: any) {
+      toast.error(err.message ?? "Failed to update sequence")
+    }
   }
 
-  function handleRecordPayment(id: string) {
-    toast.success("Payment recorded successfully")
+  async function handleRecordPayment(seq: CollectionSequence) {
+    const input = window.prompt(`Record payment for ${seq.patientName}\nCurrent balance: ${formatCurrency(seq.balance)}\n\nEnter payment amount:`)
+    if (!input) return
+    const amount = parseFloat(input)
+    if (isNaN(amount) || amount <= 0) {
+      toast.error("Invalid payment amount")
+      return
+    }
+    try {
+      const result = await recordPaymentMutation({ sequenceId: seq.convexId, amount })
+      if ((result as any)?.status === "paid") {
+        toast.success(`Payment of ${formatCurrency(amount)} recorded — balance paid in full`)
+      } else {
+        toast.success(`Payment of ${formatCurrency(amount)} recorded — new balance: ${formatCurrency((result as any)?.newBalance ?? 0)}`)
+      }
+    } catch (err: any) {
+      toast.error(err.message ?? "Failed to record payment")
+    }
   }
 
   function handleSaveThresholds() {
@@ -481,16 +415,6 @@ export default function CollectionsPage() {
         </Dialog>
       </div>
 
-      {convexError && (
-        <Card className="border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/30">
-          <CardContent className="pt-6">
-            <p className="text-sm text-amber-800 dark:text-amber-200">
-              Convex backend is not connected. Displaying mock data for preview.
-            </p>
-          </CardContent>
-        </Card>
-      )}
-
       {/* Stats Cards */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Card>
@@ -499,7 +423,11 @@ export default function CollectionsPage() {
             <Users className="size-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.activeCount}</div>
+            {isLoading ? (
+              <Skeleton className="h-8 w-16" />
+            ) : (
+              <div className="text-2xl font-bold">{stats.activeCount}</div>
+            )}
             <p className="text-xs text-muted-foreground">Patients in collection pipeline</p>
           </CardContent>
         </Card>
@@ -509,7 +437,11 @@ export default function CollectionsPage() {
             <DollarSign className="size-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency(stats.totalOutstanding)}</div>
+            {isLoading ? (
+              <Skeleton className="h-8 w-24" />
+            ) : (
+              <div className="text-2xl font-bold">{formatCurrency(stats.totalOutstanding)}</div>
+            )}
             <p className="text-xs text-muted-foreground">Across all active sequences</p>
           </CardContent>
         </Card>
@@ -519,8 +451,12 @@ export default function CollectionsPage() {
             <Clock className="size-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.avgDays}</div>
-            <p className="text-xs text-muted-foreground">Average across active sequences</p>
+            {isLoading ? (
+              <Skeleton className="h-8 w-12" />
+            ) : (
+              <div className="text-2xl font-bold">{stats.avgDays}</div>
+            )}
+            <p className="text-xs text-muted-foreground">Average across resolved sequences</p>
           </CardContent>
         </Card>
         <Card>
@@ -529,7 +465,11 @@ export default function CollectionsPage() {
             <AlertTriangle className="size-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.agencyCount}</div>
+            {isLoading ? (
+              <Skeleton className="h-8 w-8" />
+            ) : (
+              <div className="text-2xl font-bold">{stats.agencyCount}</div>
+            )}
             <p className="text-xs text-muted-foreground">Accounts transferred externally</p>
           </CardContent>
         </Card>
@@ -554,7 +494,11 @@ export default function CollectionsPage() {
                   >
                     <Icon className={`size-5 ${cfg.color}`} />
                     <span className={`text-xs font-medium ${cfg.color}`}>{cfg.label}</span>
-                    <span className={`text-lg font-bold ${cfg.color}`}>{count}</span>
+                    {isLoading ? (
+                      <Skeleton className="h-7 w-6" />
+                    ) : (
+                      <span className={`text-lg font-bold ${cfg.color}`}>{count}</span>
+                    )}
                     <span className="text-[10px] text-muted-foreground">Day {cfg.day}</span>
                   </div>
                   {idx < STEP_ORDER.length - 1 && (
@@ -575,7 +519,7 @@ export default function CollectionsPage() {
         <CardHeader>
           <CardTitle>Active Sequences</CardTitle>
           <CardDescription>
-            {filtered.length} sequence{filtered.length !== 1 && "s"} matching current filters
+            {isLoading ? "Loading..." : `${filtered.length} sequence${filtered.length !== 1 ? "s" : ""} matching current filters`}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -633,30 +577,36 @@ export default function CollectionsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {!sequences ? (
-                  <TableRow>
-                    <TableCell colSpan={10} className="h-24 text-center">
-                      <div className="flex items-center justify-center gap-2 text-muted-foreground">
-                        <div className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                        Loading collections...
-                      </div>
-                    </TableCell>
-                  </TableRow>
+                {isLoading ? (
+                  Array.from({ length: 5 }).map((_, i) => (
+                    <TableRow key={i}>
+                      <TableCell><Skeleton className="size-4" /></TableCell>
+                      <TableCell><Skeleton className="h-4 w-32" /></TableCell>
+                      <TableCell><Skeleton className="h-4 w-16" /></TableCell>
+                      <TableCell><Skeleton className="h-5 w-24" /></TableCell>
+                      <TableCell><Skeleton className="h-4 w-8" /></TableCell>
+                      <TableCell><Skeleton className="h-4 w-6" /></TableCell>
+                      <TableCell className="hidden lg:table-cell"><Skeleton className="h-4 w-28" /></TableCell>
+                      <TableCell className="hidden lg:table-cell"><Skeleton className="h-4 w-20" /></TableCell>
+                      <TableCell><Skeleton className="h-5 w-16" /></TableCell>
+                      <TableCell><Skeleton className="size-6" /></TableCell>
+                    </TableRow>
+                  ))
                 ) : filtered.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={10} className="h-24 text-center text-muted-foreground">
-                      No sequences found.
+                      No collection sequences found.
                     </TableCell>
                   </TableRow>
                 ) : (
                   filtered.map((seq) => (
                     <SequenceRow
-                      key={seq.id}
+                      key={seq.convexId}
                       sequence={seq}
-                      isExpanded={expandedRow === seq.id}
-                      onToggleExpand={() => setExpandedRow(expandedRow === seq.id ? null : seq.id)}
-                      onTogglePause={() => handleTogglePause(seq.id)}
-                      onRecordPayment={() => handleRecordPayment(seq.id)}
+                      isExpanded={expandedRow === seq.convexId}
+                      onToggleExpand={() => setExpandedRow(expandedRow === seq.convexId ? null : seq.convexId)}
+                      onTogglePause={() => handleTogglePause(seq)}
+                      onRecordPayment={() => handleRecordPayment(seq)}
                     />
                   ))
                 )}
@@ -685,7 +635,7 @@ function SequenceRow({
   onRecordPayment: () => void
 }) {
   return (
-    <>
+    <Fragment>
       <TableRow className="cursor-pointer hover:bg-muted/50" onClick={onToggleExpand}>
         <TableCell>
           {isExpanded ? (
@@ -762,17 +712,6 @@ function SequenceRow({
                     </div>
                   </div>
                 </div>
-                {/* Related Claims */}
-                <div className="space-y-2">
-                  <h4 className="text-sm font-semibold">Related Claims</h4>
-                  <div className="flex flex-wrap gap-1">
-                    {seq.relatedClaims.map((claim) => (
-                      <Badge key={claim} variant="outline" className="text-xs">
-                        {claim}
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
                 {/* Summary */}
                 <div className="space-y-2">
                   <h4 className="text-sm font-semibold">Summary</h4>
@@ -789,36 +728,40 @@ function SequenceRow({
               {/* Step History Timeline */}
               <div className="space-y-2">
                 <h4 className="text-sm font-semibold">Step History</h4>
-                <div className="relative space-y-0">
-                  {seq.stepHistory.map((entry, idx) => {
-                    const cfg = STEP_CONFIG[entry.step]
-                    const Icon = cfg.icon
-                    return (
-                      <div key={idx} className="flex gap-3 pb-3 last:pb-0">
-                        <div className="flex flex-col items-center">
-                          <div className={`flex size-7 items-center justify-center rounded-full ${cfg.bgColor}`}>
-                            <Icon className={`size-3.5 ${cfg.color}`} />
+                {seq.stepHistory.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No steps executed yet.</p>
+                ) : (
+                  <div className="relative space-y-0">
+                    {seq.stepHistory.map((entry, idx) => {
+                      const cfg = STEP_CONFIG[entry.step]
+                      const Icon = cfg.icon
+                      return (
+                        <div key={idx} className="flex gap-3 pb-3 last:pb-0">
+                          <div className="flex flex-col items-center">
+                            <div className={`flex size-7 items-center justify-center rounded-full ${cfg.bgColor}`}>
+                              <Icon className={`size-3.5 ${cfg.color}`} />
+                            </div>
+                            {idx < seq.stepHistory.length - 1 && (
+                              <div className="w-px flex-1 bg-border mt-1" />
+                            )}
                           </div>
-                          {idx < seq.stepHistory.length - 1 && (
-                            <div className="w-px flex-1 bg-border mt-1" />
-                          )}
-                        </div>
-                        <div className="flex-1 pb-1">
-                          <div className="flex items-baseline gap-2">
-                            <span className="text-sm font-medium">{entry.action}</span>
-                            <span className="text-xs text-muted-foreground">{entry.date}</span>
+                          <div className="flex-1 pb-1">
+                            <div className="flex items-baseline gap-2">
+                              <span className="text-sm font-medium">{entry.action}</span>
+                              <span className="text-xs text-muted-foreground">{entry.date}</span>
+                            </div>
+                            <p className="text-xs text-muted-foreground">{entry.result}</p>
                           </div>
-                          <p className="text-xs text-muted-foreground">{entry.result}</p>
                         </div>
-                      </div>
-                    )
-                  })}
-                </div>
+                      )
+                    })}
+                  </div>
+                )}
               </div>
             </div>
           </TableCell>
         </TableRow>
       )}
-    </>
+    </Fragment>
   )
 }

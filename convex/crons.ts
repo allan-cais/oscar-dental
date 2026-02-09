@@ -65,4 +65,20 @@ crons.interval(
   internal.reviewRequests.mutations.processPending
 );
 
+// NexHealth incremental sync - every 5 minutes
+// Pulls changed patients/appointments from NexHealth for all active configs
+crons.interval(
+  "nexhealth incremental sync",
+  { minutes: 5 },
+  internal.nexhealth.actions.runIncrementalSync
+);
+
+// NexHealth health check - every 5 minutes
+// Authenticates and pings NexHealth API for each active config, records status
+crons.interval(
+  "nexhealth health check",
+  { minutes: 5 },
+  internal.nexhealth.actions.runHealthCheck
+);
+
 export default crons;

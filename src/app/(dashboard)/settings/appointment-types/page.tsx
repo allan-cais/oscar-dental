@@ -1,12 +1,16 @@
 "use client"
 
 import { useState, useMemo } from "react"
+import { useQuery, useMutation } from "convex/react"
+import { api } from "../../../../../convex/_generated/api"
 import {
   Plus,
   Pencil,
   Search,
   CalendarClock,
 } from "lucide-react"
+import { Skeleton } from "@/components/ui/skeleton"
+import { DataEmptyState } from "@/components/ui/data-empty-state"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -42,6 +46,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { cn } from "@/lib/utils"
+import { toast } from "sonner"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -68,101 +73,7 @@ interface AppointmentType {
   isActive: boolean
 }
 
-// ---------------------------------------------------------------------------
-// Demo Data
-// ---------------------------------------------------------------------------
-const DEMO_APPOINTMENT_TYPES: AppointmentType[] = [
-  {
-    id: "at_1",
-    name: "Adult Prophylaxis",
-    code: "D1110",
-    duration: 60,
-    category: "hygiene",
-    productionValue: 150,
-    isActive: true,
-  },
-  {
-    id: "at_2",
-    name: "Child Prophylaxis",
-    code: "D1120",
-    duration: 45,
-    category: "hygiene",
-    productionValue: 95,
-    isActive: true,
-  },
-  {
-    id: "at_3",
-    name: "Scaling & Root Planing (per quad)",
-    code: "D4341",
-    duration: 90,
-    category: "hygiene",
-    productionValue: 275,
-    isActive: true,
-  },
-  {
-    id: "at_4",
-    name: "Porcelain Crown",
-    code: "D2740",
-    duration: 90,
-    category: "restorative",
-    productionValue: 1200,
-    isActive: true,
-  },
-  {
-    id: "at_5",
-    name: "Composite Filling (2 surface)",
-    code: "D2332",
-    duration: 45,
-    category: "restorative",
-    productionValue: 250,
-    isActive: true,
-  },
-  {
-    id: "at_6",
-    name: "Comprehensive Oral Evaluation",
-    code: "D0150",
-    duration: 30,
-    category: "diagnostic",
-    productionValue: 85,
-    isActive: true,
-  },
-  {
-    id: "at_7",
-    name: "Periodic Oral Evaluation",
-    code: "D0120",
-    duration: 15,
-    category: "diagnostic",
-    productionValue: 55,
-    isActive: true,
-  },
-  {
-    id: "at_8",
-    name: "Root Canal (Anterior)",
-    code: "D3310",
-    duration: 90,
-    category: "endodontic",
-    productionValue: 850,
-    isActive: true,
-  },
-  {
-    id: "at_9",
-    name: "Surgical Extraction",
-    code: "D7210",
-    duration: 60,
-    category: "surgical",
-    productionValue: 350,
-    isActive: true,
-  },
-  {
-    id: "at_10",
-    name: "Emergency Exam",
-    code: "D0140",
-    duration: 30,
-    category: "emergency",
-    productionValue: 75,
-    isActive: true,
-  },
-]
+// (Demo data removed - data sourced from Convex queries)
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -358,30 +269,74 @@ function AppointmentTypeDialog({
 // Main Page
 // ---------------------------------------------------------------------------
 export default function AppointmentTypesSettingsPage() {
-  const [types, setTypes] = useState(DEMO_APPOINTMENT_TYPES)
+  const rawTypes = useQuery(api.appointmentTypes.queries.list as any, {})
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingType, setEditingType] = useState<
     (typeof EMPTY_FORM & { id?: string }) | null
   >(null)
   const [search, setSearch] = useState("")
 
-  const filtered = useMemo(() => {
-    if (!search) return types
-    const q = search.toLowerCase()
-    return types.filter(
-      (t) =>
-        t.name.toLowerCase().includes(q) ||
-        t.code.toLowerCase().includes(q) ||
-        categoryLabel(t.category).toLowerCase().includes(q)
+  const createType = useMutation((api as any).appointmentTypes.mutations.create)
+  const updateType = useMutation((api as any).appointmentTypes.mutations.update)
+  const deactivateType = useMutation((api as any).appointmentTypes.mutations.deactivate)
+
+  // Loading state
+  if (rawTypes === undefined) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">Appointment Types</h1>
+            <p className="text-muted-foreground">Manage appointment types, CDT codes, and production values.</p>
+          </div>
+          <Skeleton className="h-10 w-28" />
+        </div>
+        <Card>
+          <CardHeader>
+            <Skeleton className="h-5 w-40" />
+            <Skeleton className="h-4 w-24" />
+          </CardHeader>
+          <CardContent>
+            <Skeleton className="h-10 w-64 mb-4" />
+            <div className="rounded-md border p-4 space-y-3">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <Skeleton key={i} className="h-12 w-full" />
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
     )
-  }, [types, search])
+  }
+
+  // Map Convex docs to local shape
+  const types = (rawTypes as any[]).map((t: any) => ({
+    id: t._id ?? t.id,
+    name: t.name ?? "",
+    code: t.code ?? "",
+    duration: t.duration ?? 60,
+    category: (t.category ?? "other") as ApptCategory,
+    productionValue: t.productionValue ?? 0,
+    isActive: t.isActive ?? true,
+  }))
+
+  const filtered = search
+    ? types.filter((t) => {
+        const q = search.toLowerCase()
+        return (
+          t.name.toLowerCase().includes(q) ||
+          t.code.toLowerCase().includes(q) ||
+          categoryLabel(t.category).toLowerCase().includes(q)
+        )
+      })
+    : types
 
   function openAdd() {
     setEditingType({ ...EMPTY_FORM })
     setDialogOpen(true)
   }
 
-  function openEdit(type: AppointmentType) {
+  function openEdit(type: (typeof types)[number]) {
     setEditingType({
       id: type.id,
       name: type.name,
@@ -393,29 +348,47 @@ export default function AppointmentTypesSettingsPage() {
     setDialogOpen(true)
   }
 
-  function handleSave(data: typeof EMPTY_FORM & { id?: string }) {
-    if (data.id) {
-      setTypes((prev) =>
-        prev.map((t) =>
-          t.id === data.id
-            ? { ...t, ...data, id: t.id, isActive: t.isActive }
-            : t
-        )
-      )
-    } else {
-      const newType: AppointmentType = {
-        id: `at_${Date.now()}`,
-        ...data,
-        isActive: true,
+  async function handleSave(data: typeof EMPTY_FORM & { id?: string }) {
+    try {
+      if (data.id) {
+        await updateType({
+          appointmentTypeId: data.id as any,
+          name: data.name,
+          code: data.code,
+          duration: data.duration,
+          category: data.category,
+          productionValue: data.productionValue,
+        })
+        toast.success("Appointment type updated and syncing to PMS")
+      } else {
+        await createType({
+          name: data.name,
+          code: data.code,
+          duration: data.duration,
+          category: data.category,
+          productionValue: data.productionValue,
+        })
+        toast.success("Appointment type created and syncing to PMS")
       }
-      setTypes((prev) => [...prev, newType])
+    } catch (error) {
+      toast.error("Failed to save appointment type")
     }
   }
 
-  function toggleActive(id: string) {
-    setTypes((prev) =>
-      prev.map((t) => (t.id === id ? { ...t, isActive: !t.isActive } : t))
-    )
+  async function toggleActive(id: string) {
+    try {
+      const type = types.find((t) => t.id === id)
+      if (!type) return
+      if (type.isActive) {
+        await deactivateType({ appointmentTypeId: id as any })
+        toast.success("Appointment type deactivated")
+      } else {
+        await updateType({ appointmentTypeId: id as any, name: type.name })
+        toast.success("Appointment type reactivated")
+      }
+    } catch (error) {
+      toast.error("Failed to update appointment type status")
+    }
   }
 
   return (
@@ -435,6 +408,9 @@ export default function AppointmentTypesSettingsPage() {
         </Button>
       </div>
 
+      {types.length === 0 && !search ? (
+        <DataEmptyState resource="appointment types" />
+      ) : (
       <Card>
         <CardHeader>
           <CardTitle>All Appointment Types</CardTitle>
@@ -552,6 +528,7 @@ export default function AppointmentTypesSettingsPage() {
           </div>
         </CardContent>
       </Card>
+      )}
 
       {editingType && (
         <AppointmentTypeDialog

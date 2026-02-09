@@ -1,12 +1,21 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import React, { useState, useMemo } from "react"
+import { useQuery, useMutation } from "convex/react"
+import { api } from "../../../../../convex/_generated/api"
 import {
   Plus,
   Pencil,
   Search,
   Stethoscope,
+  ChevronDown,
+  ChevronRight,
+  Trash2,
+  Clock,
 } from "lucide-react"
+import { toast } from "sonner"
+import { Skeleton } from "@/components/ui/skeleton"
+import { DataEmptyState } from "@/components/ui/data-empty-state"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -47,83 +56,6 @@ import { cn } from "@/lib/utils"
 // Types
 // ---------------------------------------------------------------------------
 type ProviderType = "dentist" | "hygienist" | "specialist" | "assistant"
-
-interface Provider {
-  id: string
-  firstName: string
-  lastName: string
-  npi: string
-  type: ProviderType
-  specialty: string
-  practice: string
-  isActive: boolean
-}
-
-// ---------------------------------------------------------------------------
-// Demo Data
-// ---------------------------------------------------------------------------
-const DEMO_PROVIDERS: Provider[] = [
-  {
-    id: "prov_1",
-    firstName: "Emily",
-    lastName: "Park",
-    npi: "1234567890",
-    type: "dentist",
-    specialty: "General Dentistry",
-    practice: "Canopy Dental - Austin",
-    isActive: true,
-  },
-  {
-    id: "prov_2",
-    firstName: "Sarah",
-    lastName: "Mitchell",
-    npi: "2345678901",
-    type: "hygienist",
-    specialty: "Dental Hygiene",
-    practice: "Canopy Dental - Austin",
-    isActive: true,
-  },
-  {
-    id: "prov_3",
-    firstName: "James",
-    lastName: "Rodriguez",
-    npi: "3456789012",
-    type: "specialist",
-    specialty: "Endodontics",
-    practice: "Canopy Dental - Round Rock",
-    isActive: true,
-  },
-  {
-    id: "prov_4",
-    firstName: "Lisa",
-    lastName: "Chen",
-    npi: "4567890123",
-    type: "dentist",
-    specialty: "General Dentistry",
-    practice: "Canopy Dental - Round Rock",
-    isActive: true,
-  },
-  {
-    id: "prov_5",
-    firstName: "Maria",
-    lastName: "Gonzalez",
-    npi: "5678901234",
-    type: "hygienist",
-    specialty: "Dental Hygiene",
-    practice: "Canopy Dental - Austin",
-    isActive: false,
-  },
-  {
-    id: "prov_6",
-    firstName: "David",
-    lastName: "Kim",
-    npi: "6789012345",
-    type: "specialist",
-    specialty: "Oral Surgery",
-    practice: "Canopy Dental - Austin",
-    isActive: true,
-  },
-]
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -316,33 +248,202 @@ function ProviderDialog({
 }
 
 // ---------------------------------------------------------------------------
+// Day Names
+// ---------------------------------------------------------------------------
+const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
+
+// ---------------------------------------------------------------------------
+// Working Hours Section
+// ---------------------------------------------------------------------------
+function WorkingHoursSection({ providerId }: { providerId: string }) {
+  const [expanded, setExpanded] = useState(false)
+  const [newDay, setNewDay] = useState(1) // Monday default
+  const [newStart, setNewStart] = useState("08:00")
+  const [newEnd, setNewEnd] = useState("17:00")
+
+  const workingHours = useQuery(
+    (api as any).workingHours.queries.list,
+    { providerId }
+  )
+  const createWorkingHour = useMutation((api as any).workingHours.mutations.create)
+  const removeWorkingHour = useMutation((api as any).workingHours.mutations.remove)
+
+  async function handleAdd() {
+    try {
+      await createWorkingHour({
+        pmsProviderId: providerId,
+        dayOfWeek: newDay,
+        startTime: newStart,
+        endTime: newEnd,
+      })
+      toast.success("Working hours added")
+    } catch (error) {
+      toast.error("Failed to add working hours")
+    }
+  }
+
+  async function handleRemove(id: string) {
+    try {
+      await removeWorkingHour({ workingHourId: id as any })
+      toast.success("Working hours removed")
+    } catch (error) {
+      toast.error("Failed to remove working hours")
+    }
+  }
+
+  const hours = (workingHours as any[] | undefined) ?? []
+
+  return (
+    <div className="border-t mt-2 pt-2">
+      <button
+        type="button"
+        className="flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors w-full text-left py-1"
+        onClick={() => setExpanded(!expanded)}
+      >
+        {expanded ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
+        <Clock className="size-4" />
+        Working Hours
+        <Badge variant="secondary" className="ml-auto text-xs">
+          {hours.length}
+        </Badge>
+      </button>
+      {expanded && (
+        <div className="mt-2 space-y-3">
+          {hours.length === 0 ? (
+            <p className="text-xs text-muted-foreground pl-6">No working hours configured.</p>
+          ) : (
+            <div className="space-y-1 pl-6">
+              {hours.map((h: any) => (
+                <div key={h._id ?? h.id} className="flex items-center gap-3 text-sm">
+                  <span className="w-24 font-medium">{DAY_NAMES[h.dayOfWeek] ?? `Day ${h.dayOfWeek}`}</span>
+                  <span className="text-muted-foreground">{h.startTime} - {h.endTime}</span>
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    className="text-red-500 hover:text-red-700 hover:bg-red-50 ml-auto"
+                    onClick={() => handleRemove(h._id ?? h.id)}
+                  >
+                    <Trash2 className="size-3.5" />
+                    <span className="sr-only">Remove</span>
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="flex items-end gap-2 pl-6">
+            <div className="space-y-1">
+              <Label className="text-xs">Day</Label>
+              <Select value={String(newDay)} onValueChange={(v) => setNewDay(Number(v))}>
+                <SelectTrigger className="w-[130px] h-8 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {DAY_NAMES.map((name, i) => (
+                    <SelectItem key={i} value={String(i)}>{name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Start</Label>
+              <Input
+                type="time"
+                value={newStart}
+                onChange={(e) => setNewStart(e.target.value)}
+                className="w-[110px] h-8 text-xs"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">End</Label>
+              <Input
+                type="time"
+                value={newEnd}
+                onChange={(e) => setNewEnd(e.target.value)}
+                className="w-[110px] h-8 text-xs"
+              />
+            </div>
+            <Button size="sm" variant="outline" className="h-8" onClick={handleAdd}>
+              <Plus className="size-3.5 mr-1" />
+              Add
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Main Page
 // ---------------------------------------------------------------------------
 export default function ProvidersSettingsPage() {
-  const [providers, setProviders] = useState(DEMO_PROVIDERS)
+  const rawProviders = useQuery(api.providers.queries.list as any, {})
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingProvider, setEditingProvider] = useState<
     (typeof EMPTY_FORM & { id?: string }) | null
   >(null)
   const [search, setSearch] = useState("")
+  const [expandedProvider, setExpandedProvider] = useState<string | null>(null)
 
-  const filtered = useMemo(() => {
-    if (!search) return providers
-    const q = search.toLowerCase()
-    return providers.filter(
-      (p) =>
-        `${p.firstName} ${p.lastName}`.toLowerCase().includes(q) ||
-        p.npi.includes(q) ||
-        p.specialty.toLowerCase().includes(q)
+  // Loading state
+  if (rawProviders === undefined) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">Providers</h1>
+            <p className="text-muted-foreground">Manage providers across your practices.</p>
+          </div>
+          <Skeleton className="h-10 w-32" />
+        </div>
+        <Card>
+          <CardHeader>
+            <Skeleton className="h-5 w-32" />
+            <Skeleton className="h-4 w-20" />
+          </CardHeader>
+          <CardContent>
+            <Skeleton className="h-10 w-64 mb-4" />
+            <div className="rounded-md border p-4 space-y-3">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <Skeleton key={i} className="h-12 w-full" />
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
     )
-  }, [providers, search])
+  }
+
+  // Map Convex docs to local shape
+  const providers = (rawProviders as any[]).map((p: any) => ({
+    id: p._id ?? p.id,
+    pmsProviderId: p.pmsProviderId ?? p.foreignId ?? p._id ?? p.id,
+    firstName: p.firstName ?? "",
+    lastName: p.lastName ?? "",
+    npi: p.npi ?? "",
+    type: (p.type ?? "dentist") as ProviderType,
+    specialty: p.specialty ?? "",
+    practice: p.practice ?? "",
+    isActive: p.isActive ?? true,
+  }))
+
+  const filtered = search
+    ? providers.filter((p) => {
+        const q = search.toLowerCase()
+        return (
+          `${p.firstName} ${p.lastName}`.toLowerCase().includes(q) ||
+          p.npi.includes(q) ||
+          p.specialty.toLowerCase().includes(q)
+        )
+      })
+    : providers
 
   function openAdd() {
     setEditingProvider({ ...EMPTY_FORM })
     setDialogOpen(true)
   }
 
-  function openEdit(provider: Provider) {
+  function openEdit(provider: (typeof providers)[number]) {
     setEditingProvider({
       id: provider.id,
       firstName: provider.firstName,
@@ -355,29 +456,13 @@ export default function ProvidersSettingsPage() {
     setDialogOpen(true)
   }
 
-  function handleSave(data: typeof EMPTY_FORM & { id?: string }) {
-    if (data.id) {
-      setProviders((prev) =>
-        prev.map((p) =>
-          p.id === data.id
-            ? { ...p, ...data, id: p.id, isActive: p.isActive }
-            : p
-        )
-      )
-    } else {
-      const newProvider: Provider = {
-        id: `prov_${Date.now()}`,
-        ...data,
-        isActive: true,
-      }
-      setProviders((prev) => [...prev, newProvider])
-    }
+  function handleSave(_data: typeof EMPTY_FORM & { id?: string }) {
+    // TODO: Call Convex mutation to create/update provider
+    // For now, data will refresh via useQuery reactivity
   }
 
-  function toggleActive(id: string) {
-    setProviders((prev) =>
-      prev.map((p) => (p.id === id ? { ...p, isActive: !p.isActive } : p))
-    )
+  function toggleActive(_id: string) {
+    // TODO: Call Convex mutation to toggle active status
   }
 
   return (
@@ -395,6 +480,9 @@ export default function ProvidersSettingsPage() {
         </Button>
       </div>
 
+      {providers.length === 0 && !search ? (
+        <DataEmptyState resource="providers" />
+      ) : (
       <Card>
         <CardHeader>
           <CardTitle>All Providers</CardTitle>
@@ -443,9 +531,17 @@ export default function ProvidersSettingsPage() {
                   </TableRow>
                 ) : (
                   filtered.map((provider) => (
-                    <TableRow key={provider.id}>
+                    <React.Fragment key={provider.id}>
+                    <TableRow>
                       <TableCell className="font-medium">
-                        {provider.firstName} {provider.lastName}
+                        <button
+                          type="button"
+                          className="flex items-center gap-1.5 hover:underline"
+                          onClick={() => setExpandedProvider(expandedProvider === provider.id ? null : provider.id)}
+                        >
+                          {expandedProvider === provider.id ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
+                          {provider.firstName} {provider.lastName}
+                        </button>
                       </TableCell>
                       <TableCell>{typeBadge(provider.type)}</TableCell>
                       <TableCell className="text-muted-foreground font-mono text-xs">
@@ -473,6 +569,15 @@ export default function ProvidersSettingsPage() {
                           <Button
                             variant="ghost"
                             size="icon-xs"
+                            onClick={() => setExpandedProvider(expandedProvider === provider.id ? null : provider.id)}
+                            title="Working Hours"
+                          >
+                            <Clock className="size-3.5" />
+                            <span className="sr-only">Working Hours</span>
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon-xs"
                             onClick={() => openEdit(provider)}
                           >
                             <Pencil className="size-3.5" />
@@ -493,6 +598,14 @@ export default function ProvidersSettingsPage() {
                         </div>
                       </TableCell>
                     </TableRow>
+                    {expandedProvider === provider.id && (
+                      <TableRow>
+                        <TableCell colSpan={7} className="bg-muted/30 p-4">
+                          <WorkingHoursSection providerId={provider.pmsProviderId} />
+                        </TableCell>
+                      </TableRow>
+                    )}
+                    </React.Fragment>
                   ))
                 )}
               </TableBody>
@@ -500,6 +613,7 @@ export default function ProvidersSettingsPage() {
           </div>
         </CardContent>
       </Card>
+      )}
 
       {editingProvider && (
         <ProviderDialog

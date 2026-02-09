@@ -1,6 +1,8 @@
 "use client"
 
 import { useState, useMemo } from "react"
+import { useQuery } from "convex/react"
+import { api } from "../../../../../convex/_generated/api"
 import {
   Users,
   CheckCircle2,
@@ -17,9 +19,6 @@ import { Input } from "@/components/ui/input"
 import {
   Card,
   CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
 } from "@/components/ui/card"
 import {
   Table,
@@ -31,6 +30,7 @@ import {
 } from "@/components/ui/table"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Separator } from "@/components/ui/separator"
+import { DataEmptyState } from "@/components/ui/data-empty-state"
 import { cn } from "@/lib/utils"
 
 // ---------------------------------------------------------------------------
@@ -40,6 +40,7 @@ type MatchStatus = "pending" | "matched" | "rejected" | "merged"
 
 interface MatchQueueItem {
   id: string
+  _id?: string
   oscarPatient: {
     id: string
     firstName: string
@@ -67,295 +68,6 @@ interface MatchQueueItem {
   createdAt: number
   resolvedAt?: number
 }
-
-// ---------------------------------------------------------------------------
-// Demo Data
-// ---------------------------------------------------------------------------
-const DEMO_MATCHES: MatchQueueItem[] = [
-  {
-    id: "mq_1",
-    oscarPatient: {
-      id: "osc_101",
-      firstName: "Maria",
-      lastName: "Garcia",
-      dob: "1985-03-15",
-      phone: "(512) 555-0142",
-      email: "maria.garcia@email.com",
-      address: "123 Main St, Austin, TX 78701",
-      gender: "Female",
-    },
-    pmsPatient: {
-      id: "pms_201",
-      pmsId: "OD-10042",
-      firstName: "Maria",
-      lastName: "Garcia",
-      dob: "1985-03-15",
-      phone: "(512) 555-0142",
-      email: "m.garcia@gmail.com",
-      address: "123 Main Street, Austin, TX 78701",
-      gender: "Female",
-    },
-    matchScore: 0.96,
-    matchFields: ["name", "dob", "phone", "address"],
-    status: "pending",
-    createdAt: Date.now() - 3600000,
-  },
-  {
-    id: "mq_2",
-    oscarPatient: {
-      id: "osc_102",
-      firstName: "James",
-      lastName: "Thompson",
-      dob: "1972-08-22",
-      phone: "(512) 555-0198",
-      email: "james.t@work.com",
-      address: "456 Oak Ave, Round Rock, TX 78664",
-      gender: "Male",
-    },
-    pmsPatient: {
-      id: "pms_202",
-      pmsId: "OD-10088",
-      firstName: "Jim",
-      lastName: "Thompson",
-      dob: "1972-08-22",
-      phone: "(512) 555-0198",
-      email: "jthompson@outlook.com",
-      address: "456 Oak Avenue, Round Rock, TX 78664",
-      gender: "Male",
-    },
-    matchScore: 0.82,
-    matchFields: ["dob", "phone", "address"],
-    status: "pending",
-    createdAt: Date.now() - 7200000,
-  },
-  {
-    id: "mq_3",
-    oscarPatient: {
-      id: "osc_103",
-      firstName: "Susan",
-      lastName: "Lee",
-      dob: "1990-11-30",
-      phone: "(737) 555-0167",
-      email: "susan.lee@email.com",
-      address: "789 Elm Dr, Cedar Park, TX 78613",
-      gender: "Female",
-    },
-    pmsPatient: {
-      id: "pms_203",
-      pmsId: "OD-10125",
-      firstName: "Susan",
-      lastName: "Lee",
-      dob: "1990-11-30",
-      phone: "(737) 555-0167",
-      email: "susan.lee@email.com",
-      address: "789 Elm Dr, Cedar Park, TX 78613",
-      gender: "Female",
-    },
-    matchScore: 1.0,
-    matchFields: ["name", "dob", "phone", "email", "address"],
-    status: "matched",
-    createdAt: Date.now() - 86400000,
-    resolvedAt: Date.now() - 80000000,
-  },
-  {
-    id: "mq_4",
-    oscarPatient: {
-      id: "osc_104",
-      firstName: "Robert",
-      lastName: "Martinez",
-      dob: "1965-05-10",
-      phone: "(512) 555-0234",
-      email: "rob.martinez@yahoo.com",
-      address: "321 Pine Ln, Georgetown, TX 78628",
-      gender: "Male",
-    },
-    pmsPatient: {
-      id: "pms_204",
-      pmsId: "OD-10201",
-      firstName: "Roberto",
-      lastName: "Martinez",
-      dob: "1965-05-10",
-      phone: "(512) 555-0999",
-      email: "roberto.m@hotmail.com",
-      address: "321 Pine Lane, Georgetown, TX 78628",
-      gender: "Male",
-    },
-    matchScore: 0.65,
-    matchFields: ["dob", "address"],
-    status: "pending",
-    createdAt: Date.now() - 10800000,
-  },
-  {
-    id: "mq_5",
-    oscarPatient: {
-      id: "osc_105",
-      firstName: "Emily",
-      lastName: "Chen",
-      dob: "1998-01-20",
-      phone: "(737) 555-0312",
-      email: "emily.chen@email.com",
-      address: "567 Birch Ct, Pflugerville, TX 78660",
-      gender: "Female",
-    },
-    pmsPatient: {
-      id: "pms_205",
-      pmsId: "OD-10267",
-      firstName: "Emily",
-      lastName: "Chen",
-      dob: "1998-01-20",
-      phone: "(737) 555-0312",
-      email: "echen98@gmail.com",
-      address: "567 Birch Court, Pflugerville, TX 78660",
-      gender: "Female",
-    },
-    matchScore: 0.91,
-    matchFields: ["name", "dob", "phone", "address"],
-    status: "pending",
-    createdAt: Date.now() - 14400000,
-  },
-  {
-    id: "mq_6",
-    oscarPatient: {
-      id: "osc_106",
-      firstName: "David",
-      lastName: "Wilson",
-      dob: "1980-07-04",
-      phone: "(512) 555-0456",
-      email: "d.wilson@email.com",
-      address: "890 Maple Rd, Leander, TX 78641",
-      gender: "Male",
-    },
-    pmsPatient: {
-      id: "pms_206",
-      pmsId: "OD-10302",
-      firstName: "David",
-      lastName: "Wilson",
-      dob: "1980-07-14",
-      phone: "(512) 555-0456",
-      email: "dwilson@email.com",
-      address: "892 Maple Rd, Leander, TX 78641",
-      gender: "Male",
-    },
-    matchScore: 0.74,
-    matchFields: ["name", "phone"],
-    status: "pending",
-    createdAt: Date.now() - 18000000,
-  },
-  {
-    id: "mq_7",
-    oscarPatient: {
-      id: "osc_107",
-      firstName: "Jennifer",
-      lastName: "Davis",
-      dob: "1975-12-08",
-      phone: "(512) 555-0789",
-      email: "jen.davis@work.com",
-      address: "234 Walnut St, Austin, TX 78745",
-      gender: "Female",
-    },
-    pmsPatient: {
-      id: "pms_207",
-      pmsId: "OD-10045",
-      firstName: "Jennifer",
-      lastName: "Davis-Miller",
-      dob: "1975-12-08",
-      phone: "(512) 555-0789",
-      email: "jen.davis@work.com",
-      address: "234 Walnut St, Austin, TX 78745",
-      gender: "Female",
-    },
-    matchScore: 0.88,
-    matchFields: ["dob", "phone", "email", "address"],
-    status: "pending",
-    createdAt: Date.now() - 21600000,
-  },
-  {
-    id: "mq_8",
-    oscarPatient: {
-      id: "osc_108",
-      firstName: "Michael",
-      lastName: "Brown",
-      dob: "1955-09-17",
-      phone: "(737) 555-0543",
-      email: "michael.b@aol.com",
-      address: "678 Cedar Blvd, Hutto, TX 78634",
-      gender: "Male",
-    },
-    pmsPatient: {
-      id: "pms_208",
-      pmsId: "OD-10089",
-      firstName: "Mike",
-      lastName: "Brown",
-      dob: "1955-09-17",
-      phone: "(737) 555-0543",
-      email: "michael.brown@aol.com",
-      address: "678 Cedar Blvd, Hutto, TX 78634",
-      gender: "Male",
-    },
-    matchScore: 0.85,
-    matchFields: ["dob", "phone", "address"],
-    status: "rejected",
-    createdAt: Date.now() - 172800000,
-    resolvedAt: Date.now() - 86400000,
-  },
-  {
-    id: "mq_9",
-    oscarPatient: {
-      id: "osc_109",
-      firstName: "Linda",
-      lastName: "Nguyen",
-      dob: "1992-04-25",
-      phone: "(512) 555-0678",
-      email: "linda.n@email.com",
-      address: "901 Ash Way, Austin, TX 78748",
-      gender: "Female",
-    },
-    pmsPatient: {
-      id: "pms_209",
-      pmsId: "OD-10333",
-      firstName: "Linda",
-      lastName: "Nguyen",
-      dob: "1992-04-25",
-      phone: "(512) 555-0678",
-      email: "linda.nguyen@email.com",
-      address: "901 Ash Way, Austin, TX 78748",
-      gender: "Female",
-    },
-    matchScore: 0.94,
-    matchFields: ["name", "dob", "phone", "address"],
-    status: "matched",
-    createdAt: Date.now() - 259200000,
-    resolvedAt: Date.now() - 172800000,
-  },
-  {
-    id: "mq_10",
-    oscarPatient: {
-      id: "osc_110",
-      firstName: "Kevin",
-      lastName: "Patel",
-      dob: "1988-06-12",
-      phone: "(737) 555-0891",
-      email: "kevin.p@email.com",
-      address: "345 Spruce Dr, Bee Cave, TX 78738",
-      gender: "Male",
-    },
-    pmsPatient: {
-      id: "pms_210",
-      pmsId: "OD-10400",
-      firstName: "Kevin",
-      lastName: "Patel",
-      dob: "1988-06-12",
-      phone: "(737) 555-0891",
-      email: "kevin.patel@outlook.com",
-      address: "345 Spruce Dr, Bee Cave, TX 78738",
-      gender: "Male",
-    },
-    matchScore: 0.93,
-    matchFields: ["name", "dob", "phone", "address"],
-    status: "pending",
-    createdAt: Date.now() - 1800000,
-  },
-]
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -518,70 +230,92 @@ function ComparisonDetail({ item }: { item: MatchQueueItem }) {
 // Main Page
 // ---------------------------------------------------------------------------
 export default function PatientMatchQueuePage() {
-  const [matches, setMatches] = useState(DEMO_MATCHES)
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState("all")
   const [search, setSearch] = useState("")
 
+  // Load from Convex
+  const matchQueueData = useQuery((api as any).patients.queries.listMatchQueue as any, {})
+
+  // Loading state
+  if (matchQueueData === undefined) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Patient Match Queue</h1>
+          <p className="text-sm text-muted-foreground">Review and resolve patient identity matches between Oscar and your PMS.</p>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-3">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="h-20 bg-muted animate-pulse rounded-lg" />
+          ))}
+        </div>
+        <div className="h-80 bg-muted animate-pulse rounded-lg" />
+      </div>
+    )
+  }
+
+  const matchesRaw = (matchQueueData as any[]) ?? []
+  const matches: MatchQueueItem[] = matchesRaw.map((m: any) => ({
+    id: m._id || m.id,
+    _id: m._id,
+    oscarPatient: m.oscarPatient || { id: "", firstName: "", lastName: "", dob: "" },
+    pmsPatient: m.pmsPatient || { id: "", pmsId: "", firstName: "", lastName: "", dob: "" },
+    matchScore: m.matchScore || 0,
+    matchFields: m.matchFields || [],
+    status: m.status || "pending",
+    createdAt: m.createdAt || m._creationTime || Date.now(),
+    resolvedAt: m.resolvedAt,
+  }))
+
+  // Empty state
+  if (matches.length === 0) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Patient Match Queue</h1>
+          <p className="text-sm text-muted-foreground">Review and resolve patient identity matches between Oscar and your PMS.</p>
+        </div>
+        <DataEmptyState resource="patient matches" message="No patient matches to review. Matches will appear here after syncing patient data from your PMS." />
+      </div>
+    )
+  }
+
   // Stats
-  const stats = useMemo(() => {
-    const pending = matches.filter((m) => m.status === "pending").length
-    const resolvedToday = matches.filter(
+  const stats = {
+    pending: matches.filter((m) => m.status === "pending").length,
+    resolvedToday: matches.filter(
       (m) =>
         m.resolvedAt &&
         new Date(m.resolvedAt).toDateString() === new Date().toDateString()
-    ).length
-    const autoMatchRate =
+    ).length,
+    autoMatchRate:
       matches.length > 0
         ? Math.round(
             (matches.filter((m) => m.matchScore >= 0.9).length / matches.length) *
               100
           )
-        : 0
-    return { pending, resolvedToday, autoMatchRate }
-  }, [matches])
+        : 0,
+  }
 
   // Filter
-  const filtered = useMemo(() => {
-    let result = matches
-    if (activeTab !== "all") {
-      result = result.filter((m) => m.status === activeTab)
-    }
-    if (search) {
-      const q = search.toLowerCase()
-      result = result.filter(
-        (m) =>
+  const filtered = matches
+    .filter((m) => {
+      if (activeTab !== "all" && m.status !== activeTab) return false
+      if (search) {
+        const q = search.toLowerCase()
+        return (
           `${m.oscarPatient.firstName} ${m.oscarPatient.lastName}`
             .toLowerCase()
             .includes(q) ||
           `${m.pmsPatient.firstName} ${m.pmsPatient.lastName}`
             .toLowerCase()
             .includes(q) ||
-          m.pmsPatient.pmsId.toLowerCase().includes(q)
-      )
-    }
-    return result
-  }, [matches, activeTab, search])
-
-  function handleConfirm(id: string) {
-    setMatches((prev) =>
-      prev.map((m) =>
-        m.id === id
-          ? { ...m, status: "matched" as MatchStatus, resolvedAt: Date.now() }
-          : m
-      )
-    )
-  }
-
-  function handleReject(id: string) {
-    setMatches((prev) =>
-      prev.map((m) =>
-        m.id === id
-          ? { ...m, status: "rejected" as MatchStatus, resolvedAt: Date.now() }
-          : m
-      )
-    )
-  }
+          (m.pmsPatient.pmsId || "").toLowerCase().includes(q)
+        )
+      }
+      return true
+    })
 
   return (
     <div className="space-y-6">
@@ -685,18 +419,106 @@ export default function PatientMatchQueuePage() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filtered.map((item) => (
-                    <MatchRow
-                      key={item.id}
-                      item={item}
-                      expanded={expandedId === item.id}
-                      onToggle={() =>
-                        setExpandedId(expandedId === item.id ? null : item.id)
-                      }
-                      onConfirm={() => handleConfirm(item.id)}
-                      onReject={() => handleReject(item.id)}
-                    />
-                  ))
+                  filtered.map((item) => {
+                    const pct = Math.round((item.matchScore || 0) * 100)
+                    const expanded = expandedId === item.id
+
+                    return (
+                      <>
+                        <TableRow
+                          key={item.id}
+                          className="cursor-pointer"
+                          onClick={() => setExpandedId(expanded ? null : item.id)}
+                        >
+                          <TableCell>
+                            {expanded ? (
+                              <ChevronDown className="size-4 text-muted-foreground" />
+                            ) : (
+                              <ChevronRight className="size-4 text-muted-foreground" />
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <div>
+                              <p className="font-medium">
+                                {item.oscarPatient.firstName} {item.oscarPatient.lastName}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                DOB: {formatDate(item.oscarPatient.dob)}
+                              </p>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div>
+                              <p className="font-medium">
+                                {item.pmsPatient.firstName} {item.pmsPatient.lastName}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                DOB: {formatDate(item.pmsPatient.dob)} | {item.pmsPatient.pmsId}
+                              </p>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-2 min-w-[120px]">
+                              <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
+                                <div
+                                  className={cn("h-full rounded-full transition-all", scoreColor(item.matchScore))}
+                                  style={{ width: `${pct}%` }}
+                                />
+                              </div>
+                              <span className={cn("text-xs font-medium tabular-nums", scoreTextColor(item.matchScore))}>
+                                {pct}%
+                              </span>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex flex-wrap gap-1">
+                              {(item.matchFields || []).map((field) => (
+                                <Badge key={field} variant="secondary" className="text-xs">
+                                  {FIELD_LABELS[field] || field}
+                                </Badge>
+                              ))}
+                            </div>
+                          </TableCell>
+                          <TableCell>{statusBadge(item.status)}</TableCell>
+                          <TableCell className="text-right">
+                            {item.status === "pending" && (
+                              <div className="flex items-center justify-end gap-1">
+                                <Button
+                                  size="xs"
+                                  className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    // Would call Convex mutation here
+                                  }}
+                                >
+                                  <Check className="size-3" />
+                                  Confirm
+                                </Button>
+                                <Button
+                                  size="xs"
+                                  variant="destructive"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    // Would call Convex mutation here
+                                  }}
+                                >
+                                  <X className="size-3" />
+                                  Reject
+                                </Button>
+                              </div>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                        {expanded && (
+                          <TableRow key={`${item.id}-detail`}>
+                            <TableCell colSpan={7} className="p-0 bg-muted/30">
+                              <ComparisonDetail item={item} />
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </>
+                    )
+                  })
                 )}
               </TableBody>
             </Table>
@@ -704,119 +526,5 @@ export default function PatientMatchQueuePage() {
         </TabsContent>
       </Tabs>
     </div>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// Match Row
-// ---------------------------------------------------------------------------
-function MatchRow({
-  item,
-  expanded,
-  onToggle,
-  onConfirm,
-  onReject,
-}: {
-  item: MatchQueueItem
-  expanded: boolean
-  onToggle: () => void
-  onConfirm: () => void
-  onReject: () => void
-}) {
-  const pct = Math.round(item.matchScore * 100)
-
-  return (
-    <>
-      <TableRow
-        className="cursor-pointer"
-        onClick={onToggle}
-      >
-        <TableCell>
-          {expanded ? (
-            <ChevronDown className="size-4 text-muted-foreground" />
-          ) : (
-            <ChevronRight className="size-4 text-muted-foreground" />
-          )}
-        </TableCell>
-        <TableCell>
-          <div>
-            <p className="font-medium">
-              {item.oscarPatient.firstName} {item.oscarPatient.lastName}
-            </p>
-            <p className="text-xs text-muted-foreground">
-              DOB: {formatDate(item.oscarPatient.dob)}
-            </p>
-          </div>
-        </TableCell>
-        <TableCell>
-          <div>
-            <p className="font-medium">
-              {item.pmsPatient.firstName} {item.pmsPatient.lastName}
-            </p>
-            <p className="text-xs text-muted-foreground">
-              DOB: {formatDate(item.pmsPatient.dob)} | {item.pmsPatient.pmsId}
-            </p>
-          </div>
-        </TableCell>
-        <TableCell>
-          <div className="flex items-center gap-2 min-w-[120px]">
-            <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
-              <div
-                className={cn("h-full rounded-full transition-all", scoreColor(item.matchScore))}
-                style={{ width: `${pct}%` }}
-              />
-            </div>
-            <span className={cn("text-xs font-medium tabular-nums", scoreTextColor(item.matchScore))}>
-              {pct}%
-            </span>
-          </div>
-        </TableCell>
-        <TableCell>
-          <div className="flex flex-wrap gap-1">
-            {item.matchFields.map((field) => (
-              <Badge key={field} variant="secondary" className="text-xs">
-                {FIELD_LABELS[field] || field}
-              </Badge>
-            ))}
-          </div>
-        </TableCell>
-        <TableCell>{statusBadge(item.status)}</TableCell>
-        <TableCell className="text-right">
-          {item.status === "pending" && (
-            <div className="flex items-center justify-end gap-1">
-              <Button
-                size="xs"
-                className="bg-emerald-600 hover:bg-emerald-700 text-white"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onConfirm()
-                }}
-              >
-                <Check className="size-3" />
-                Confirm
-              </Button>
-              <Button
-                size="xs"
-                variant="destructive"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onReject()
-                }}
-              >
-                <X className="size-3" />
-                Reject
-              </Button>
-            </div>
-          )}
-        </TableCell>
-      </TableRow>
-      {expanded && (
-        <TableRow>
-          <TableCell colSpan={7} className="p-0 bg-muted/30">
-            <ComparisonDetail item={item} />
-          </TableCell>
-        </TableRow>
-      )}
-    </>
   )
 }

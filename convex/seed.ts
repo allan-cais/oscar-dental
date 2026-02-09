@@ -1,4 +1,5 @@
 import { internalMutation } from "./_generated/server";
+import type { Id } from "./_generated/dataModel";
 import { v } from "convex/values";
 
 // ============================================================================
@@ -362,7 +363,7 @@ export const seed = internalMutation({
       { firstName: "Raj", lastName: "Patel", npi: "1112223339", type: "specialist" as const, specialty: "Periodontics", color: "#EF4444", practiceIdx: 1 },
     ];
 
-    const providerIds: Array<typeof practiceMain> = [];
+    const providerIds: Id<"providers">[] = [];
     for (const p of providerDefs) {
       const id = await ctx.db.insert("providers", {
         orgId,
@@ -383,7 +384,7 @@ export const seed = internalMutation({
     // ========================================================================
     // 3. OPERATORIES (8)
     // ========================================================================
-    const operatoryIds: Array<typeof practiceMain> = [];
+    const operatoryIds: Id<"operatories">[] = [];
     for (let i = 0; i < 8; i++) {
       const practiceIdx = i < 4 ? 0 : 1;
       const opNum = i + 1;
@@ -415,7 +416,7 @@ export const seed = internalMutation({
       { name: "Complete Denture Upper", code: "D5110", duration: 60, category: "prosthodontic" as const, productionValue: 1800, color: "#6D28D9" },
     ];
 
-    const apptTypeIds: Array<typeof practiceMain> = [];
+    const apptTypeIds: Id<"appointmentTypes">[] = [];
     for (const at of apptTypeDefs) {
       const id = await ctx.db.insert("appointmentTypes", {
         orgId,
@@ -446,7 +447,7 @@ export const seed = internalMutation({
       { firstName: "Michael", lastName: "Taylor", role: "front_desk" as const, email: "michael.taylor@canopydental.com" },
     ];
 
-    const userIds: Array<typeof practiceMain> = [];
+    const userIds: Id<"users">[] = [];
     for (let i = 0; i < userDefs.length; i++) {
       const u = userDefs[i];
       const id = await ctx.db.insert("users", {
@@ -468,7 +469,7 @@ export const seed = internalMutation({
     // ========================================================================
     // 6. PATIENTS (200)
     // ========================================================================
-    const patientIds: Array<typeof practiceMain> = [];
+    const patientIds: Id<"patients">[] = [];
     for (let i = 0; i < 200; i++) {
       const firstName = FIRST_NAMES[Math.floor(rng() * FIRST_NAMES.length)];
       const lastName = LAST_NAMES[Math.floor(rng() * LAST_NAMES.length)];
@@ -583,14 +584,14 @@ export const seed = internalMutation({
       return `${String(newH).padStart(2, "0")}:${String(newM).padStart(2, "0")}`;
     }
 
-    const appointmentIds: Array<typeof practiceMain> = [];
-    const completedApptIds: Array<typeof practiceMain> = [];
+    const appointmentIds: Id<"appointments">[] = [];
+    const completedApptIds: Id<"appointments">[] = [];
 
     // Track which appointment goes with which patient/practice for claims
     const appointmentMeta: Array<{
-      id: typeof practiceMain;
-      patientId: typeof practiceMain;
-      practiceId: typeof practiceMain;
+      id: Id<"appointments">;
+      patientId: Id<"patients">;
+      practiceId: Id<"practices">;
       procedures: Array<{ code: string; description: string; fee: number; tooth?: string; surface?: string }>;
       totalFee: number;
       status: string;
@@ -728,10 +729,10 @@ export const seed = internalMutation({
       { bucket: "120+", count: 5, minDays: 121, maxDays: 180 },
     ];
 
-    const claimIds: Array<typeof practiceMain> = [];
+    const claimIds: Id<"claims">[] = [];
     const deniedClaimIds: Array<{
-      claimId: typeof practiceMain;
-      patientId: typeof practiceMain;
+      claimId: Id<"claims">;
+      patientId: Id<"patients">;
       payerId: string;
       payerName: string;
       amount: number;

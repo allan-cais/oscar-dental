@@ -2,8 +2,17 @@ import type {
   PmsAdapter,
   PmsPatient,
   PmsAppointment,
-  PmsProvider,
+  PmsAppointmentType,
+  PmsAdjustment,
+  PmsCapabilities,
+  PmsCharge,
   PmsClaim,
+  PmsFeeSchedule,
+  PmsInsuranceCoverage,
+  PmsPayment,
+  PmsProcedure,
+  PmsProvider,
+  PmsRecall,
 } from "./interface";
 
 // ---------------------------------------------------------------------------
@@ -405,12 +414,7 @@ function generateAppointmentsForDate(date: string): PmsAppointment[] {
 // Mock implementation
 // ---------------------------------------------------------------------------
 export class MockPmsAdapter implements PmsAdapter {
-  private pmsType: "opendental" | "eaglesoft" | "dentrix";
   private appointmentStore: Map<string, PmsAppointment> = new Map();
-
-  constructor(pmsType: "opendental" | "eaglesoft" | "dentrix" = "opendental") {
-    this.pmsType = pmsType;
-  }
 
   async getPatient(patientId: string): Promise<PmsPatient | null> {
     await delay();
@@ -452,11 +456,6 @@ export class MockPmsAdapter implements PmsAdapter {
   }
 
   async createAppointment(data: Partial<PmsAppointment>): Promise<PmsAppointment> {
-    if (!this.isWriteEnabled()) {
-      throw new Error(
-        `Write operations not available for ${this.pmsType}. Use HITL fallback workflow.`
-      );
-    }
     await delay(100, 250);
     const appointment: PmsAppointment = {
       pmsAppointmentId: `APT-${randomId()}`,
@@ -476,11 +475,6 @@ export class MockPmsAdapter implements PmsAdapter {
   }
 
   async updateAppointmentStatus(appointmentId: string, status: string): Promise<void> {
-    if (!this.isWriteEnabled()) {
-      throw new Error(
-        `Write operations not available for ${this.pmsType}. Use HITL fallback workflow.`
-      );
-    }
     await delay(60, 150);
     const existing = this.appointmentStore.get(appointmentId);
     if (existing) {
@@ -564,11 +558,129 @@ export class MockPmsAdapter implements PmsAdapter {
     });
   }
 
-  isWriteEnabled(): boolean {
-    return this.pmsType === "opendental";
+  // ---------------------------------------------------------------------------
+  // Appointment Types
+  // ---------------------------------------------------------------------------
+
+  async listAppointmentTypes(): Promise<PmsAppointmentType[]> {
+    await delay();
+    return [];
   }
 
-  getPmsType(): "opendental" | "eaglesoft" | "dentrix" {
-    return this.pmsType;
+  // ---------------------------------------------------------------------------
+  // Insurance Coverages
+  // ---------------------------------------------------------------------------
+
+  async getPatientInsuranceCoverages(_patientId: string): Promise<PmsInsuranceCoverage[]> {
+    await delay();
+    return [];
+  }
+
+  // ---------------------------------------------------------------------------
+  // Recalls
+  // ---------------------------------------------------------------------------
+
+  async listRecalls(_params?: { patientId?: string }): Promise<PmsRecall[]> {
+    await delay();
+    return [];
+  }
+
+  // ---------------------------------------------------------------------------
+  // Fee Schedules
+  // ---------------------------------------------------------------------------
+
+  async listFeeSchedules(): Promise<PmsFeeSchedule[]> {
+    await delay();
+    return [];
+  }
+
+  // ---------------------------------------------------------------------------
+  // Procedures
+  // ---------------------------------------------------------------------------
+
+  async listProcedures(_params?: { patientId?: string; appointmentId?: string }): Promise<PmsProcedure[]> {
+    await delay();
+    return [];
+  }
+
+  // ---------------------------------------------------------------------------
+  // Payments
+  // ---------------------------------------------------------------------------
+
+  async listPayments(_params?: { patientId?: string; claimId?: string }): Promise<PmsPayment[]> {
+    await delay();
+    return [];
+  }
+
+  async createPayment(data: Partial<PmsPayment>): Promise<PmsPayment> {
+    await delay();
+    return {
+      pmsPaymentId: `PMT-${randomId()}`,
+      patientId: data.patientId ?? "",
+      amount: data.amount ?? 0,
+      paymentTypeId: data.paymentTypeId,
+      paymentMethod: data.paymentMethod,
+      date: data.date ?? new Date().toISOString().split("T")[0],
+      note: data.note,
+      claimId: data.claimId,
+    };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Adjustments
+  // ---------------------------------------------------------------------------
+
+  async listAdjustments(_params?: { patientId?: string }): Promise<PmsAdjustment[]> {
+    await delay();
+    return [];
+  }
+
+  async createAdjustment(data: Partial<PmsAdjustment>): Promise<PmsAdjustment> {
+    await delay();
+    return {
+      pmsAdjustmentId: `ADJ-${randomId()}`,
+      patientId: data.patientId ?? "",
+      providerId: data.providerId,
+      amount: data.amount ?? 0,
+      adjustmentTypeId: data.adjustmentTypeId,
+      description: data.description,
+      date: data.date ?? new Date().toISOString().split("T")[0],
+    };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Charges
+  // ---------------------------------------------------------------------------
+
+  async listCharges(_params?: { patientId?: string; claimId?: string }): Promise<PmsCharge[]> {
+    await delay();
+    return [];
+  }
+
+  // ---------------------------------------------------------------------------
+  // Capabilities
+  // ---------------------------------------------------------------------------
+
+  getCapabilities(): PmsCapabilities {
+    return {
+      canReadPatients: true,
+      canWritePatients: true,
+      canReadAppointments: true,
+      canWriteAppointments: true,
+      canReadProviders: true,
+      canReadOperatories: true,
+      canReadAppointmentTypes: true,
+      canWriteAppointmentTypes: true,
+      canReadInsuranceCoverages: true,
+      canReadRecalls: true,
+      canReadFeeSchedules: true,
+      canReadProcedures: true,
+      canReadPayments: true,
+      canWritePayments: true,
+      canReadAdjustments: true,
+      canWriteAdjustments: true,
+      canReadCharges: true,
+      canReadClaims: true,
+    };
   }
 }

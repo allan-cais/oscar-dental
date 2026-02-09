@@ -31,6 +31,7 @@ import {
 } from "@/components/ui/select"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Separator } from "@/components/ui/separator"
+import { DataEmptyState } from "@/components/ui/data-empty-state"
 import { cn } from "@/lib/utils"
 import {
   Clock,
@@ -64,24 +65,8 @@ type TemplateData = {
 }
 
 // ---------------------------------------------------------------------------
-// Mock Data
+// Constants
 // ---------------------------------------------------------------------------
-
-const MOCK_OPERATORIES = [
-  { id: "op_1", name: "Op 1" },
-  { id: "op_2", name: "Op 2" },
-  { id: "op_3", name: "Op 3" },
-  { id: "op_4", name: "Op 4 (Hygiene)" },
-  { id: "op_5", name: "Op 5 (Hygiene)" },
-]
-
-const MOCK_PROVIDERS_LIST = [
-  "Dr. Park",
-  "Dr. Torres",
-  "Dr. Kim",
-  "RDH Smith",
-  "RDH Jones",
-]
 
 const CATEGORY_TYPES: Record<string, string[]> = {
   Hygiene: ["Hygiene", "Perio Maint", "SRP"],
@@ -90,39 +75,6 @@ const CATEGORY_TYPES: Record<string, string[]> = {
   Cosmetic: ["Veneer Prep", "Veneer Seat", "Whitening", "Bonding"],
   Admin: ["Exam + X-rays", "New Patient Exam", "Consult"],
   Emergency: ["Emergency Exam", "Emergency Treatment"],
-}
-
-const MOCK_TEMPLATES: Record<number, TemplateData> = {
-  1: {
-    name: "Monday - Full Production",
-    slots: [
-      // Op 1 - Dr. Park
-      { startTime: "08:00", endTime: "09:30", appointmentType: "Crown Prep", category: "Restorative", provider: "Dr. Park", operatory: "Op 1", value: 1200 },
-      { startTime: "09:30", endTime: "10:30", appointmentType: "Filling", category: "Restorative", provider: "Dr. Park", operatory: "Op 1", value: 350 },
-      { startTime: "10:30", endTime: "12:00", appointmentType: "Root Canal", category: "Surgical", provider: "Dr. Park", operatory: "Op 1", value: 950 },
-      { startTime: "13:00", endTime: "14:30", appointmentType: "Crown Seat", category: "Restorative", provider: "Dr. Park", operatory: "Op 1", value: 800 },
-      { startTime: "14:30", endTime: "16:00", appointmentType: "Implant Consult", category: "Surgical", provider: "Dr. Park", operatory: "Op 1", value: 500 },
-      // Op 4 - RDH Smith
-      { startTime: "08:00", endTime: "09:00", appointmentType: "Hygiene", category: "Hygiene", provider: "RDH Smith", operatory: "Op 4 (Hygiene)", value: 185 },
-      { startTime: "09:00", endTime: "10:00", appointmentType: "Hygiene", category: "Hygiene", provider: "RDH Smith", operatory: "Op 4 (Hygiene)", value: 185 },
-      { startTime: "10:00", endTime: "11:00", appointmentType: "Perio Maint", category: "Hygiene", provider: "RDH Smith", operatory: "Op 4 (Hygiene)", value: 225 },
-      { startTime: "11:00", endTime: "12:00", appointmentType: "Hygiene", category: "Hygiene", provider: "RDH Smith", operatory: "Op 4 (Hygiene)", value: 185 },
-      { startTime: "13:00", endTime: "14:00", appointmentType: "Hygiene", category: "Hygiene", provider: "RDH Smith", operatory: "Op 4 (Hygiene)", value: 185 },
-      { startTime: "14:00", endTime: "15:00", appointmentType: "SRP", category: "Hygiene", provider: "RDH Smith", operatory: "Op 4 (Hygiene)", value: 300 },
-      // Op 2 - Dr. Torres
-      { startTime: "08:00", endTime: "09:00", appointmentType: "Exam + X-rays", category: "Admin", provider: "Dr. Torres", operatory: "Op 2", value: 275 },
-      { startTime: "09:00", endTime: "10:30", appointmentType: "Extraction", category: "Surgical", provider: "Dr. Torres", operatory: "Op 2", value: 450 },
-      { startTime: "10:30", endTime: "12:00", appointmentType: "Bridge Prep", category: "Restorative", provider: "Dr. Torres", operatory: "Op 2", value: 1100 },
-      { startTime: "13:00", endTime: "14:00", appointmentType: "Filling", category: "Restorative", provider: "Dr. Torres", operatory: "Op 2", value: 350 },
-      { startTime: "14:00", endTime: "15:30", appointmentType: "Veneer Prep", category: "Cosmetic", provider: "Dr. Torres", operatory: "Op 2", value: 900 },
-    ],
-  },
-  2: { name: "Tuesday - Balanced", slots: [] },
-  3: { name: "Wednesday - Hygiene Heavy", slots: [] },
-  4: { name: "Thursday - Full Production", slots: [] },
-  5: { name: "Friday - Half Day", slots: [] },
-  6: { name: "Saturday - Emergency Only", slots: [] },
-  0: { name: "Sunday - Closed", slots: [] },
 }
 
 const DAY_NAMES: { key: number; short: string; full: string }[] = [
@@ -247,16 +199,69 @@ export default function PerfectDayPage() {
     copyFrom: "",
   })
 
-  // Try loading from Convex, fall back to mock data
-  let convexError = false
-  try {
-    // eslint-disable-next-line react-hooks/rules-of-hooks
-    useQuery(api.scheduling.queries.perfectDayTemplates)
-  } catch {
-    convexError = true
+  // Load data from Convex
+  const operatoriesData = useQuery(api.operatories.queries.list as any, {})
+  const providersData = useQuery(api.providers.queries.list as any, {})
+  const templatesData = useQuery(api.perfectday.queries.getTemplates as any, {})
+
+  // Loading state
+  if (operatoriesData === undefined || providersData === undefined || templatesData === undefined) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">Perfect Day Templates</h1>
+            <p className="text-muted-foreground">Define ideal schedule templates for each day of the week.</p>
+          </div>
+        </div>
+        <div className="h-12 bg-muted animate-pulse rounded-lg" />
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="h-20 bg-muted animate-pulse rounded-lg" />
+          ))}
+        </div>
+        <div className="h-96 bg-muted animate-pulse rounded-lg" />
+      </div>
+    )
   }
 
-  const templates = MOCK_TEMPLATES
+  const operatories = (operatoriesData as any[]) ?? []
+  const providersList = (providersData as any[]) ?? []
+  const providerNames = providersList.map((p: any) => p.name || `${p.firstName || ""} ${p.lastName || ""}`.trim() || "Unknown")
+
+  // Build templates map from Convex data
+  // templatesData should be an array or object of templates keyed by day
+  const templates: Record<number, TemplateData> = useMemo(() => {
+    const result: Record<number, TemplateData> = {}
+    // Initialize all days with empty templates
+    DAY_NAMES.forEach((d) => {
+      result[d.key] = { name: `${d.full} Template`, slots: [] }
+    })
+    // Overlay Convex data
+    if (Array.isArray(templatesData)) {
+      for (const t of templatesData as any[]) {
+        const dayKey = t.dayOfWeek ?? t.dayKey
+        if (dayKey !== undefined && result[dayKey] !== undefined) {
+          result[dayKey] = {
+            name: t.name || result[dayKey].name,
+            slots: (t.slots || []) as SlotData[],
+          }
+        }
+      }
+    } else if (templatesData && typeof templatesData === "object") {
+      for (const [key, val] of Object.entries(templatesData as any)) {
+        const dayKey = parseInt(key)
+        if (!isNaN(dayKey) && result[dayKey] !== undefined && val) {
+          result[dayKey] = {
+            name: (val as any).name || result[dayKey].name,
+            slots: ((val as any).slots || []) as SlotData[],
+          }
+        }
+      }
+    }
+    return result
+  }, [templatesData])
+
   const dayKey = parseInt(selectedDay)
   const currentTemplate = templates[dayKey]
 
@@ -272,18 +277,15 @@ export default function PerfectDayPage() {
     }
     const totalSlots = currentTemplate.slots.length
     const productionTarget = currentTemplate.slots.reduce(
-      (sum, s) => sum + s.value,
+      (sum, s) => sum + (s.value || 0),
       0
     )
 
-    // Calculate total provider-minutes
     const providerMinutes = currentTemplate.slots.reduce((sum, s) => {
       return sum + (timeToMinutes(s.endTime) - timeToMinutes(s.startTime))
     }, 0)
     const providerHours = Math.round((providerMinutes / 60) * 10) / 10
 
-    // Utilization: provider-minutes scheduled vs available
-    // Available = number of unique operatories * (11 hours * 60 = 660 min, 7am-6pm)
     const usedOps = new Set(currentTemplate.slots.map((s) => s.operatory))
     const availableMinutes = usedOps.size * 540 // 9 productive hours
     const utilization =
@@ -302,7 +304,6 @@ export default function PerfectDayPage() {
       if (!map[slot.operatory]) map[slot.operatory] = []
       map[slot.operatory].push(slot)
     }
-    // Sort each operatory's slots by start time
     for (const key of Object.keys(map)) {
       map[key].sort(
         (a, b) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime)
@@ -314,15 +315,9 @@ export default function PerfectDayPage() {
   // Operatories that have slots
   const activeOperatories = useMemo(() => {
     const ops = Object.keys(slotsByOperatory)
-    // Sort by MOCK_OPERATORIES order
-    const order = MOCK_OPERATORIES.map((o) => o.name)
+    const order = operatories.map((o: any) => o.name)
     return ops.sort((a, b) => order.indexOf(a) - order.indexOf(b))
-  }, [slotsByOperatory])
-
-  // Grid start/end times
-  const gridStartMinutes = timeToMinutes("07:00")
-  const gridEndMinutes = timeToMinutes("18:00")
-  const gridTotalMinutes = gridEndMinutes - gridStartMinutes
+  }, [slotsByOperatory, operatories])
 
   function openEditSlot(slot: SlotData, index: number) {
     setEditSlot({ slot, index })
@@ -339,19 +334,16 @@ export default function PerfectDayPage() {
   }
 
   function handleSaveSlot() {
-    // In real implementation, this would update via Convex mutation
     setEditOpen(false)
     setEditSlot(null)
   }
 
   function handleDeleteSlot() {
-    // In real implementation, this would delete via Convex mutation
     setEditOpen(false)
     setEditSlot(null)
   }
 
   function handleCreateTemplate() {
-    // In real implementation, this would create via Convex mutation
     setCreateOpen(false)
     setCreateForm({ name: "", copyFrom: "" })
   }
@@ -373,16 +365,6 @@ export default function PerfectDayPage() {
           Create Template
         </Button>
       </div>
-
-      {convexError && (
-        <Card className="border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/30">
-          <CardContent className="pt-6">
-            <p className="text-sm text-amber-800 dark:text-amber-200">
-              Convex backend is not connected. Displaying demo data for preview.
-            </p>
-          </CardContent>
-        </Card>
-      )}
 
       {/* Day-of-week tabs */}
       <Tabs value={selectedDay} onValueChange={setSelectedDay}>
@@ -502,13 +484,12 @@ export default function PerfectDayPage() {
 
                       {/* Time rows */}
                       {TIME_SLOTS.filter((_, i) => i < TIME_SLOTS.length - 1).map(
-                        (time, timeIdx) => {
+                        (time) => {
                           const timeMin = timeToMinutes(time)
                           const isHour = time.endsWith(":00")
 
                           return (
                             <>
-                              {/* Time label cell */}
                               <div
                                 key={`time-${time}`}
                                 className={cn(
@@ -522,13 +503,10 @@ export default function PerfectDayPage() {
                                 {isHour && formatTime(time)}
                               </div>
 
-                              {/* Operatory cells */}
                               {activeOperatories.map((op) => {
-                                // Find slot that starts at this time
                                 const slotHere = slotsByOperatory[op]?.find(
                                   (s) => s.startTime === time
                                 )
-                                // Check if we are inside a multi-row slot
                                 const isInsideSlot = slotsByOperatory[op]?.some(
                                   (s) =>
                                     timeMin > timeToMinutes(s.startTime) &&
@@ -536,7 +514,6 @@ export default function PerfectDayPage() {
                                 )
 
                                 if (isInsideSlot) {
-                                  // This cell is covered by a rowSpan above — we handle this via absolute positioning
                                   return null
                                 }
 
@@ -705,7 +682,7 @@ export default function PerfectDayPage() {
                   <SelectValue placeholder="Select provider" />
                 </SelectTrigger>
                 <SelectContent>
-                  {MOCK_PROVIDERS_LIST.map((p) => (
+                  {providerNames.map((p: string) => (
                     <SelectItem key={p} value={p}>
                       {p}
                     </SelectItem>
@@ -725,8 +702,8 @@ export default function PerfectDayPage() {
                   <SelectValue placeholder="Select operatory" />
                 </SelectTrigger>
                 <SelectContent>
-                  {MOCK_OPERATORIES.map((o) => (
-                    <SelectItem key={o.id} value={o.name}>
+                  {operatories.map((o: any) => (
+                    <SelectItem key={o._id || o.id} value={o.name}>
                       {o.name}
                     </SelectItem>
                   ))}

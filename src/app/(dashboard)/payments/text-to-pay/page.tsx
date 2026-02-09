@@ -328,8 +328,9 @@ export default function TextToPayPage() {
   let convexError = false
   try {
     // eslint-disable-next-line react-hooks/rules-of-hooks
-    const result = useQuery(api.payments.queries.listTextToPayLinks)
-    paymentLinks = (result as MockPaymentLink[] | undefined) ?? undefined
+    const result = useQuery(api.textToPay.queries.list, {})
+    // Query returns { paymentLinks: [...], totalCount } — extract the array
+    paymentLinks = result ? (result as any).paymentLinks ?? result : undefined
   } catch {
     convexError = true
     paymentLinks = MOCK_PAYMENT_LINKS
@@ -340,11 +341,11 @@ export default function TextToPayPage() {
   let cancelPaymentLink: ((args: any) => Promise<any>) | null = null
   try {
     // eslint-disable-next-line react-hooks/rules-of-hooks
-    sendPaymentLink = useMutation(api.payments.mutations.sendTextToPayLink)
+    sendPaymentLink = useMutation(api.textToPay.mutations.createPaymentLink)
     // eslint-disable-next-line react-hooks/rules-of-hooks
-    resendPaymentLink = useMutation(api.payments.mutations.resendTextToPayLink)
+    resendPaymentLink = useMutation(api.textToPay.mutations.sendViaSms)
     // eslint-disable-next-line react-hooks/rules-of-hooks
-    cancelPaymentLink = useMutation(api.payments.mutations.cancelTextToPayLink)
+    cancelPaymentLink = useMutation(api.textToPay.mutations.expire)
   } catch {
     // Mutations unavailable when Convex is not connected
   }

@@ -1,6 +1,37 @@
 import { mutation } from "../_generated/server";
+import { internal } from "../_generated/api";
+import type { MutationCtx } from "../_generated/server";
 import { v } from "convex/values";
 import { getOrgId, requireRole } from "../lib/auth";
+
+async function scheduleAppointmentTypePushSync(
+  ctx: MutationCtx,
+  params: {
+    appointmentTypeId: string;
+    orgId: string;
+    operation: "create" | "update";
+  }
+) {
+  const config = await ctx.db
+    .query("nexhealthConfigs")
+    .filter((q: any) =>
+      q.and(q.eq(q.field("orgId"), params.orgId), q.eq(q.field("isActive"), true))
+    )
+    .first();
+
+  if (!config) return;
+
+  await ctx.scheduler.runAfter(
+    0,
+    internal.nexhealth.actions.pushAppointmentType as any,
+    {
+      appointmentTypeId: params.appointmentTypeId as any,
+      orgId: params.orgId,
+      practiceId: config.practiceId as any,
+      operation: params.operation,
+    }
+  );
+}
 
 /**
  * Create a new appointment type.
@@ -41,6 +72,12 @@ export const create = mutation({
       isActive: true,
       createdAt: now,
       updatedAt: now,
+    });
+
+    await scheduleAppointmentTypePushSync(ctx, {
+      appointmentTypeId: appointmentTypeId as string,
+      orgId,
+      operation: "create",
     });
 
     return appointmentTypeId;
@@ -92,6 +129,13 @@ export const update = mutation({
     }
 
     await ctx.db.patch(appointmentTypeId, updates);
+
+    await scheduleAppointmentTypePushSync(ctx, {
+      appointmentTypeId: appointmentTypeId as string,
+      orgId,
+      operation: "update",
+    });
+
     return appointmentTypeId;
   },
 });
@@ -113,6 +157,12 @@ export const deactivate = mutation({
     await ctx.db.patch(args.appointmentTypeId, {
       isActive: false,
       updatedAt: Date.now(),
+    });
+
+    await scheduleAppointmentTypePushSync(ctx, {
+      appointmentTypeId: args.appointmentTypeId as string,
+      orgId,
+      operation: "update",
     });
 
     return args.appointmentTypeId;

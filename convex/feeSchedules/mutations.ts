@@ -106,7 +106,7 @@ export const addFee = mutation({
     }
 
     // Remove existing entry for this code (if any) then add new one
-    const existingFees = feeSchedule.fees.filter(
+    const existingFees = (feeSchedule.fees ?? []).filter(
       (f: any) => f.code !== args.code
     );
 
@@ -143,11 +143,11 @@ export const removeFee = mutation({
       throw new Error("Fee schedule not found");
     }
 
-    const updatedFees = feeSchedule.fees.filter(
+    const updatedFees = (feeSchedule.fees ?? []).filter(
       (f: any) => f.code !== args.code
     );
 
-    if (updatedFees.length === feeSchedule.fees.length) {
+    if (updatedFees.length === (feeSchedule.fees ?? []).length) {
       throw new Error(`Fee entry with code "${args.code}" not found`);
     }
 

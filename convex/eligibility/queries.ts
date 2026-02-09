@@ -104,3 +104,75 @@ export const getBatchStatus = query({
     };
   },
 });
+
+/**
+ * List recent eligibility verifications with patient names.
+ */
+export const list = query({
+  args: { limit: v.optional(v.number()) },
+  handler: async (ctx, args) => {
+    const orgId = await getOrgId(ctx);
+    const limit = args.limit ?? 50;
+
+    const results = await ctx.db
+      .query("eligibilityResults")
+      .withIndex("by_org", (q: any) => q.eq("orgId", orgId))
+      .order("desc")
+      .take(limit);
+
+    const now = Date.now();
+
+    const items = await Promise.all(
+      results.map(async (r: any) => {
+        const patient = (await ctx.db.get(r.patientId)) as any;
+        const patientName = patient
+          ? `${patient.firstName ?? ""} ${patient.lastName ?? ""}`.trim()
+          : "Unknown";
+
+        // Format verifiedAt as relative time
+        const diff = now - r.verifiedAt;
+        const minutes = Math.floor(diff / 60000);
+        const hours = Math.floor(diff / 3600000);
+        const days = Math.floor(diff / 86400000);
+
+        let verifiedAt: string;
+        if (days > 0) {
+          verifiedAt = `${days}d ago`;
+        } else if (hours > 0) {
+          verifiedAt = `${hours}h ago`;
+        } else if (minutes > 0) {
+          verifiedAt = `${minutes}m ago`;
+        } else {
+          verifiedAt = "Just now";
+        }
+
+        // Also format as "Today 9:42 AM" style if same day
+        const verifiedDate = new Date(r.verifiedAt);
+        const today = new Date();
+        if (
+          verifiedDate.getFullYear() === today.getFullYear() &&
+          verifiedDate.getMonth() === today.getMonth() &&
+          verifiedDate.getDate() === today.getDate()
+        ) {
+          const h = verifiedDate.getHours();
+          const m = verifiedDate.getMinutes();
+          const ampm = h >= 12 ? "PM" : "AM";
+          const hour12 = h % 12 || 12;
+          const minStr = m < 10 ? `0${m}` : `${m}`;
+          verifiedAt = `Today ${hour12}:${minStr} ${ampm}`;
+        }
+
+        return {
+          id: r._id,
+          patientName,
+          payerName: r.payerName ?? "Unknown Payer",
+          status: r.status,
+          verifiedAt,
+          method: r.verifiedBy === "batch" ? "Batch" : "Real-time",
+        };
+      })
+    );
+
+    return items;
+  },
+});

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { useQuery, useMutation } from "convex/react"
 import { api } from "../../../../convex/_generated/api"
 import { cn } from "@/lib/utils"
+import { toast } from "sonner"
 import { format, formatDistanceToNow, parseISO } from "date-fns"
 import {
   Search,
@@ -42,29 +43,6 @@ import {
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-interface Patient {
-  _id: string
-  firstName: string
-  lastName: string
-  dateOfBirth: string
-  phone?: string
-  email?: string
-  gender?: string
-  primaryInsurance?: {
-    payerId: string
-    payerName: string
-    memberId: string
-    groupNumber?: string
-  }
-  patientBalance?: number
-  insuranceBalance?: number
-  lastVisitDate?: string
-  isActive: boolean
-}
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -147,13 +125,7 @@ function AddPatientDialog({
     memberId: "",
   })
 
-  let createPatient: ReturnType<typeof useMutation> | null = null
-  try {
-    // eslint-disable-next-line react-hooks/rules-of-hooks
-    createPatient = useMutation(api.patients.create)
-  } catch {
-    // Convex not connected
-  }
+  const createPatient = useMutation(api.patients.mutations.create as any)
 
   function updateField(field: string, value: string) {
     setFormData((prev) => ({ ...prev, [field]: value }))
@@ -165,24 +137,23 @@ function AddPatientDialog({
 
     setSubmitting(true)
     try {
-      if (createPatient) {
-        await createPatient({
-          firstName: formData.firstName,
-          lastName: formData.lastName,
-          dateOfBirth: formData.dateOfBirth,
-          phone: formData.phone || undefined,
-          email: formData.email || undefined,
-          gender: formData.gender || undefined,
-          primaryInsurance:
-            formData.payerId && formData.payerName && formData.memberId
-              ? {
-                  payerId: formData.payerId,
-                  payerName: formData.payerName,
-                  memberId: formData.memberId,
-                }
-              : undefined,
-        })
-      }
+      await createPatient({
+        firstName: formData.firstName,
+        lastName: formData.lastName,
+        dateOfBirth: formData.dateOfBirth,
+        phone: formData.phone || undefined,
+        email: formData.email || undefined,
+        gender: formData.gender || undefined,
+        primaryInsurance:
+          formData.payerId && formData.payerName && formData.memberId
+            ? {
+                payerId: formData.payerId,
+                payerName: formData.payerName,
+                memberId: formData.memberId,
+              }
+            : undefined,
+      })
+      toast.success("Patient created and syncing to PMS")
       setFormData({
         firstName: "",
         lastName: "",
@@ -349,6 +320,7 @@ export default function PatientsPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [page, setPage] = useState(0)
+  const [cursorStack, setCursorStack] = useState<(string | null)[]>([null]) // cursors for each page (page 0 = null)
   const [dialogOpen, setDialogOpen] = useState(false)
 
   // Debounce search input
@@ -356,6 +328,7 @@ export default function PatientsPage() {
     const timer = setTimeout(() => {
       setSearchQuery(searchInput)
       setPage(0)
+      setCursorStack([null])
     }, 300)
     return () => clearTimeout(timer)
   }, [searchInput])
@@ -364,36 +337,114 @@ export default function PatientsPage() {
   const handleStatusChange = useCallback((value: string) => {
     setStatusFilter(value)
     setPage(0)
+    setCursorStack([null])
   }, [])
 
-  // Query patients from Convex
-  let patients: Patient[] | undefined
-  let totalCount: number | undefined
-  try {
-    const result = useQuery(api.patients.list, {
-      search: searchQuery || undefined,
-      status:
-        statusFilter === "active"
-          ? true
-          : statusFilter === "inactive"
-            ? false
-            : undefined,
-      page,
-      pageSize: PAGE_SIZE,
-    })
-    patients = result?.patients
-    totalCount = result?.totalCount
-  } catch {
-    // Convex not connected — will show empty/demo state
+  // Server-side search via mutation when search query is present
+  const searchMutation = useMutation(api.patients.queries.search as any)
+  const [searchResults, setSearchResults] = useState<any[] | null>(null)
+  const [searchLoading, setSearchLoading] = useState(false)
+
+  // Trigger server-side search when searchQuery changes
+  useEffect(() => {
+    if (searchQuery.length > 0) {
+      setSearchLoading(true)
+      searchMutation({ searchTerm: searchQuery })
+        .then((results: any) => {
+          setSearchResults(results ?? [])
+        })
+        .catch(() => {
+          setSearchResults([])
+        })
+        .finally(() => {
+          setSearchLoading(false)
+        })
+    } else {
+      setSearchResults(null)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchQuery])
+
+  // Query patients from Convex (used when not searching)
+  const currentCursor = cursorStack[page] ?? undefined
+  const result = useQuery(api.patients.queries.list as any, {
+    status:
+      statusFilter === "active"
+        ? ("active" as const)
+        : statusFilter === "inactive"
+          ? ("inactive" as const)
+          : undefined,
+    limit: PAGE_SIZE,
+    cursor: currentCursor,
+  })
+
+  // Loading state
+  if (result === undefined) {
+    return (
+      <div className="space-y-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">Patients</h1>
+            <p className="text-sm text-muted-foreground">
+              Master Patient Index with search, demographics, and PMS sync status.
+            </p>
+          </div>
+          <Skeleton className="h-10 w-32" />
+        </div>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <Skeleton className="h-10 flex-1" />
+          <Skeleton className="h-10 w-[160px]" />
+        </div>
+        <div className="rounded-md border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead>Date of Birth</TableHead>
+                <TableHead>Phone</TableHead>
+                <TableHead>Insurance</TableHead>
+                <TableHead className="text-right">Balance</TableHead>
+                <TableHead>Last Visit</TableHead>
+                <TableHead>Status</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {Array.from({ length: 8 }).map((_, i) => (
+                <SkeletonRow key={i} />
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      </div>
+    )
   }
 
-  const isLoading = patients === undefined
+  // Use server-side search results when searching, otherwise use paginated list
+  const patients = searchResults !== null ? searchResults : (result.patients ?? [])
+  const totalCount = searchResults !== null ? searchResults.length : (result.totalCount ?? patients.length)
+  const nextCursor = searchResults !== null ? null : (result.nextCursor ?? null)
+  const isLoading = false
   const hasPatients = patients && patients.length > 0
   const totalPages = totalCount ? Math.ceil(totalCount / PAGE_SIZE) : 0
   const showingFrom = hasPatients ? page * PAGE_SIZE + 1 : 0
   const showingTo = hasPatients
     ? Math.min((page + 1) * PAGE_SIZE, totalCount ?? 0)
     : 0
+
+  function handleNextPage() {
+    if (!nextCursor) return
+    // Store the nextCursor for page+1
+    setCursorStack((prev) => {
+      const next = [...prev]
+      next[page + 1] = nextCursor
+      return next
+    })
+    setPage((p) => p + 1)
+  }
+
+  function handlePrevPage() {
+    setPage((p) => Math.max(0, p - 1))
+  }
 
   return (
     <div className="space-y-6">
@@ -485,7 +536,7 @@ export default function PatientsPage() {
             {/* Patient rows */}
             {patients &&
               patients.length > 0 &&
-              patients.map((patient) => {
+              patients.map((patient: any) => {
                 const balance =
                   (patient.patientBalance ?? 0) +
                   (patient.insuranceBalance ?? 0)
@@ -553,7 +604,7 @@ export default function PatientsPage() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setPage((p) => Math.max(0, p - 1))}
+              onClick={handlePrevPage}
               disabled={page === 0}
             >
               <ChevronLeft className="size-4" />
@@ -562,8 +613,8 @@ export default function PatientsPage() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setPage((p) => p + 1)}
-              disabled={page >= totalPages - 1}
+              onClick={handleNextPage}
+              disabled={!nextCursor}
             >
               Next
               <ChevronRight className="size-4" />

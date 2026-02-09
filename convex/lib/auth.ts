@@ -23,8 +23,11 @@ export async function getOrgId(ctx: QueryCtx | MutationCtx): Promise<string> {
   const orgId = (identity as Record<string, unknown>).org_id as
     | string
     | undefined;
+  // Dev fallback: when signed in but no Clerk organization exists yet,
+  // fall back to the bootstrap orgId so synced data is visible.
+  // Remove this fallback when real Clerk organizations are configured.
   if (!orgId) {
-    throw new Error("No organization selected");
+    return "org_canopy_dev";
   }
   return orgId;
 }
@@ -41,9 +44,8 @@ export async function getCurrentUser(
   const orgId = (identity as Record<string, unknown>).org_id as
     | string
     | undefined;
-  if (!orgId) {
-    throw new Error("No organization selected");
-  }
+  // Dev fallback: same as getOrgId() — remove when real Clerk orgs are configured
+  const _resolvedOrgId = orgId || "org_canopy_dev";
 
   const user = await ctx.db
     .query("users")

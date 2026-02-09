@@ -3,7 +3,6 @@
 import { useState, useMemo } from "react"
 import { useQuery, useMutation } from "convex/react"
 import { api } from "../../../../../convex/_generated/api"
-import type { Id } from "../../../../../convex/_generated/dataModel"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -40,6 +39,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { DataEmptyState } from "@/components/ui/data-empty-state"
 import {
   Users,
   AlertTriangle,
@@ -76,28 +76,6 @@ interface RecallItem {
 }
 
 // ---------------------------------------------------------------------------
-// Mock Data
-// ---------------------------------------------------------------------------
-
-const MOCK_RECALLS: RecallItem[] = [
-  { _id: "r_1" as Id<"recallDueList">, patientName: "Alice Johnson", recallType: "hygiene", dueDate: "2025-10-15", overdueDays: 113, lastOutreach: "2026-01-10", outreachCount: 2, status: "contacted", phone: "(555) 111-2222", outreachHistory: [{ date: "2025-12-01", method: "SMS", result: "No response" }, { date: "2026-01-10", method: "Phone", result: "Left voicemail" }] },
-  { _id: "r_2" as Id<"recallDueList">, patientName: "Bob Williams", recallType: "perio", dueDate: "2025-11-01", overdueDays: 97, lastOutreach: null, outreachCount: 0, status: "due", phone: "(555) 222-3333", outreachHistory: [] },
-  { _id: "r_3" as Id<"recallDueList">, patientName: "Carol Davis", recallType: "hygiene", dueDate: "2025-12-15", overdueDays: 52, lastOutreach: "2026-01-20", outreachCount: 1, status: "contacted", phone: "(555) 333-4444", outreachHistory: [{ date: "2026-01-20", method: "Email", result: "Opened, no reply" }] },
-  { _id: "r_4" as Id<"recallDueList">, patientName: "Dan Miller", recallType: "xray", dueDate: "2025-09-01", overdueDays: 157, lastOutreach: "2025-11-15", outreachCount: 3, status: "no_response", phone: "(555) 444-5555", outreachHistory: [{ date: "2025-10-01", method: "SMS", result: "Delivered" }, { date: "2025-10-20", method: "Email", result: "No open" }, { date: "2025-11-15", method: "Phone", result: "No answer" }] },
-  { _id: "r_5" as Id<"recallDueList">, patientName: "Emma Brown", recallType: "hygiene", dueDate: "2026-01-01", overdueDays: 35, lastOutreach: "2026-01-25", outreachCount: 1, status: "scheduled", phone: "(555) 555-6666", outreachHistory: [{ date: "2026-01-25", method: "SMS", result: "Patient confirmed" }] },
-  { _id: "r_6" as Id<"recallDueList">, patientName: "Frank Wilson", recallType: "perio", dueDate: "2025-08-15", overdueDays: 174, lastOutreach: "2025-12-10", outreachCount: 4, status: "no_response", phone: "(555) 666-7777", outreachHistory: [{ date: "2025-09-01", method: "SMS", result: "Delivered" }, { date: "2025-10-05", method: "Email", result: "Opened" }, { date: "2025-11-10", method: "Phone", result: "Left voicemail" }, { date: "2025-12-10", method: "SMS", result: "Delivered" }] },
-  { _id: "r_7" as Id<"recallDueList">, patientName: "Grace Lee", recallType: "fluoride", dueDate: "2025-12-01", overdueDays: 66, lastOutreach: null, outreachCount: 0, status: "due", phone: "(555) 777-8888", outreachHistory: [] },
-  { _id: "r_8" as Id<"recallDueList">, patientName: "Henry Taylor", recallType: "hygiene", dueDate: "2025-11-15", overdueDays: 82, lastOutreach: "2026-01-15", outreachCount: 2, status: "contacted", phone: "(555) 888-9999", outreachHistory: [{ date: "2025-12-15", method: "Email", result: "No open" }, { date: "2026-01-15", method: "SMS", result: "Delivered" }] },
-  { _id: "r_9" as Id<"recallDueList">, patientName: "Irene Moore", recallType: "xray", dueDate: "2025-10-01", overdueDays: 127, lastOutreach: "2026-01-05", outreachCount: 1, status: "contacted", phone: "(555) 999-0000", outreachHistory: [{ date: "2026-01-05", method: "Phone", result: "Spoke - will call back" }] },
-  { _id: "r_10" as Id<"recallDueList">, patientName: "Jack Anderson", recallType: "hygiene", dueDate: "2026-01-15", overdueDays: 21, lastOutreach: "2026-02-01", outreachCount: 1, status: "scheduled", phone: "(555) 000-1111", outreachHistory: [{ date: "2026-02-01", method: "SMS", result: "Patient booked online" }] },
-  { _id: "r_11" as Id<"recallDueList">, patientName: "Kelly Thomas", recallType: "perio", dueDate: "2025-07-01", overdueDays: 219, lastOutreach: "2025-11-20", outreachCount: 5, status: "no_response", phone: "(555) 112-2233", outreachHistory: [{ date: "2025-08-01", method: "SMS", result: "Delivered" }, { date: "2025-09-05", method: "Email", result: "Bounced" }, { date: "2025-10-10", method: "Phone", result: "Wrong number" }, { date: "2025-11-01", method: "SMS", result: "Delivered" }, { date: "2025-11-20", method: "Phone", result: "No answer" }] },
-  { _id: "r_12" as Id<"recallDueList">, patientName: "Larry Jackson", recallType: "hygiene", dueDate: "2025-12-20", overdueDays: 47, lastOutreach: null, outreachCount: 0, status: "due", phone: "(555) 223-3344", outreachHistory: [] },
-  { _id: "r_13" as Id<"recallDueList">, patientName: "Maria White", recallType: "fluoride", dueDate: "2025-11-01", overdueDays: 97, lastOutreach: "2026-01-28", outreachCount: 2, status: "contacted", phone: "(555) 334-4455", outreachHistory: [{ date: "2025-12-15", method: "SMS", result: "Delivered" }, { date: "2026-01-28", method: "Email", result: "Opened, clicked link" }] },
-  { _id: "r_14" as Id<"recallDueList">, patientName: "Nathan Harris", recallType: "hygiene", dueDate: "2026-01-20", overdueDays: 16, lastOutreach: "2026-02-03", outreachCount: 1, status: "completed", phone: "(555) 445-5566", outreachHistory: [{ date: "2026-02-03", method: "SMS", result: "Seen in office" }] },
-  { _id: "r_15" as Id<"recallDueList">, patientName: "Olivia Martin", recallType: "xray", dueDate: "2025-06-01", overdueDays: 249, lastOutreach: "2025-10-15", outreachCount: 3, status: "no_response", phone: "(555) 556-6677", outreachHistory: [{ date: "2025-07-01", method: "SMS", result: "Delivered" }, { date: "2025-08-15", method: "Phone", result: "Left voicemail" }, { date: "2025-10-15", method: "Email", result: "No open" }] },
-]
-
-// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -108,7 +86,7 @@ function recallTypeBadge(type: RecallType): string {
     fluoride: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
     xray: "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400",
   }
-  return styles[type]
+  return styles[type] ?? styles.hygiene
 }
 
 function recallStatusBadge(status: RecallStatus): string {
@@ -119,14 +97,7 @@ function recallStatusBadge(status: RecallStatus): string {
     completed: "bg-emerald-200 text-emerald-900 dark:bg-emerald-900/50 dark:text-emerald-300",
     no_response: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
   }
-  return styles[status]
-}
-
-function overdueBucket(days: number): string {
-  if (days >= 90) return "3+"
-  if (days >= 60) return "2"
-  if (days >= 30) return "1"
-  return "<1"
+  return styles[status] ?? styles.due
 }
 
 function methodIcon(method: string) {
@@ -151,37 +122,69 @@ export default function RecallManagementPage() {
     method: "sms",
   })
 
-  // Try Convex, fallback to mock
-  let recalls: RecallItem[] | undefined
-  let convexError = false
-  try {
-    // eslint-disable-next-line react-hooks/rules-of-hooks
-    const result = useQuery(api.recall.queries.listDue)
-    recalls = (result as RecallItem[] | undefined) ?? undefined
-  } catch {
-    convexError = true
-    recalls = MOCK_RECALLS
-  }
+  // Load from Convex
+  const recallsData = useQuery(api.recall.queries.getDueList as any, {})
 
   // Mutations (best-effort)
   let sendOutreach: ((args: Record<string, unknown>) => Promise<unknown>) | null = null
   try {
     // eslint-disable-next-line react-hooks/rules-of-hooks
-    sendOutreach = useMutation(api.recall.mutations.sendOutreach)
+    sendOutreach = useMutation(api.recall.mutations.recordOutreach) as any
   } catch {
     // Mutations unavailable
   }
 
-  const items = recalls ?? MOCK_RECALLS
+  // Loading state
+  if (recallsData === undefined) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">Recall Management</h1>
+            <p className="text-muted-foreground">Track and manage patient recall appointments.</p>
+          </div>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+          {[1, 2, 3, 4, 5].map((i) => (
+            <div key={i} className="h-20 bg-muted animate-pulse rounded-lg" />
+          ))}
+        </div>
+        <div className="h-40 bg-muted animate-pulse rounded-lg" />
+        <div className="h-80 bg-muted animate-pulse rounded-lg" />
+      </div>
+    )
+  }
+
+  // getDueList returns { items, totalCount } — extract items array
+  const rawItems = recallsData && typeof recallsData === "object" && "items" in (recallsData as any)
+    ? (recallsData as any).items
+    : recallsData
+  const items = (rawItems as RecallItem[]) ?? []
+
+  // Empty state
+  if (items.length === 0) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">Recall Management</h1>
+            <p className="text-muted-foreground">
+              Track and manage patient recall appointments to maximize schedule utilization.
+            </p>
+          </div>
+        </div>
+        <DataEmptyState resource="recall records" message="No recall records found. Recall data will appear after syncing patient records from your PMS." />
+      </div>
+    )
+  }
 
   // Stats
   const totalDue = items.length
-  const oneMonthOverdue = items.filter((r) => r.overdueDays >= 30 && r.overdueDays < 60).length
-  const twoMonthOverdue = items.filter((r) => r.overdueDays >= 60 && r.overdueDays < 90).length
-  const threeMonthOverdue = items.filter((r) => r.overdueDays >= 90).length
+  const oneMonthOverdue = items.filter((r) => (r.overdueDays || 0) >= 30 && (r.overdueDays || 0) < 60).length
+  const twoMonthOverdue = items.filter((r) => (r.overdueDays || 0) >= 60 && (r.overdueDays || 0) < 90).length
+  const threeMonthOverdue = items.filter((r) => (r.overdueDays || 0) >= 90).length
   const revenueAtRisk = items.reduce((sum, r) => {
     if (r.status !== "scheduled" && r.status !== "completed") {
-      // Approximate values by recall type
       const values: Record<RecallType, number> = { hygiene: 185, perio: 350, fluoride: 45, xray: 120 }
       return sum + (values[r.recallType] ?? 150)
     }
@@ -190,7 +193,7 @@ export default function RecallManagementPage() {
 
   // Bar chart data
   const bucketCounts = {
-    "<1 month": items.filter((r) => r.overdueDays < 30).length,
+    "<1 month": items.filter((r) => (r.overdueDays || 0) < 30).length,
     "1 month": oneMonthOverdue,
     "2 months": twoMonthOverdue,
     "3+ months": threeMonthOverdue,
@@ -201,15 +204,16 @@ export default function RecallManagementPage() {
   const filteredRecalls = useMemo(() => {
     return items.filter((item) => {
       const matchesSearch =
-        search === "" || item.patientName.toLowerCase().includes(search.toLowerCase())
+        search === "" || (item.patientName || "").toLowerCase().includes(search.toLowerCase())
       const matchesType = typeFilter === "all" || item.recallType === typeFilter
       const matchesStatus = statusFilter === "all" || item.status === statusFilter
+      const days = item.overdueDays || 0
       const matchesBucket =
         bucketFilter === "all" ||
-        (bucketFilter === "<1" && item.overdueDays < 30) ||
-        (bucketFilter === "1" && item.overdueDays >= 30 && item.overdueDays < 60) ||
-        (bucketFilter === "2" && item.overdueDays >= 60 && item.overdueDays < 90) ||
-        (bucketFilter === "3+" && item.overdueDays >= 90)
+        (bucketFilter === "<1" && days < 30) ||
+        (bucketFilter === "1" && days >= 30 && days < 60) ||
+        (bucketFilter === "2" && days >= 60 && days < 90) ||
+        (bucketFilter === "3+" && days >= 90)
       return matchesSearch && matchesType && matchesStatus && matchesBucket
     })
   }, [items, search, typeFilter, statusFilter, bucketFilter])
@@ -306,16 +310,6 @@ export default function RecallManagementPage() {
           </DialogContent>
         </Dialog>
       </div>
-
-      {convexError && (
-        <Card className="border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/30">
-          <CardContent className="pt-6">
-            <p className="text-sm text-amber-800 dark:text-amber-200">
-              Convex backend is not connected. Displaying mock data for preview.
-            </p>
-          </CardContent>
-        </Card>
-      )}
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
@@ -520,18 +514,18 @@ export default function RecallManagementPage() {
                           <TableCell className="text-muted-foreground">{item.dueDate}</TableCell>
                           <TableCell className="text-right">
                             <span className={
-                              item.overdueDays >= 90 ? "text-red-600 font-semibold" :
-                              item.overdueDays >= 60 ? "text-orange-600 font-semibold" :
-                              item.overdueDays >= 30 ? "text-yellow-600 font-semibold" :
+                              (item.overdueDays || 0) >= 90 ? "text-red-600 font-semibold" :
+                              (item.overdueDays || 0) >= 60 ? "text-orange-600 font-semibold" :
+                              (item.overdueDays || 0) >= 30 ? "text-yellow-600 font-semibold" :
                               "text-muted-foreground"
                             }>
-                              {item.overdueDays}d
+                              {item.overdueDays || 0}d
                             </span>
                           </TableCell>
                           <TableCell className="text-muted-foreground">
                             {item.lastOutreach ?? "Never"}
                           </TableCell>
-                          <TableCell className="text-center">{item.outreachCount}</TableCell>
+                          <TableCell className="text-center">{item.outreachCount || 0}</TableCell>
                           <TableCell>
                             <Badge className={recallStatusBadge(item.status)}>
                               {item.status === "no_response" ? "no response" : item.status}

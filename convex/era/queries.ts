@@ -65,16 +65,16 @@ export const getById = query({
     const enrichedPayments = await Promise.all(
       era.claimPayments.map(async (cp: any) => {
         if (cp.matchedClaimId) {
-          const claim = await ctx.db.get(cp.matchedClaimId);
+          const claim = await ctx.db.get(cp.matchedClaimId) as any;
           return {
             ...cp,
             matchedClaim: claim
               ? {
                   _id: claim._id,
-                  claimNumber: claim.claimNumber,
+                  claimNumber: claim.claimNumber ?? null,
                   status: claim.status,
                   totalCharged: claim.totalCharged,
-                  totalPaid: claim.totalPaid,
+                  totalPaid: claim.totalPaid ?? null,
                   patientId: claim.patientId,
                 }
               : null,

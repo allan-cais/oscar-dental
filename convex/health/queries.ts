@@ -9,6 +9,7 @@ const INTEGRATIONS = [
   "twilio",
   "google_business",
   "openai",
+  "nexhealth",
 ] as const;
 
 /**

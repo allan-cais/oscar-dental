@@ -9,6 +9,8 @@ import type { SmsAdapter } from "./sms/interface";
 import type { ReviewsAdapter } from "./reviews/interface";
 import type { AiAdapter } from "./ai/interface";
 
+import { NexHealthPmsAdapter } from "./pms/nexhealth";
+import { NexHealthApiClient } from "./nexhealth/client";
 import { MockPmsAdapter } from "./pms/mock";
 import { MockClearinghouseAdapter } from "./clearinghouse/mock";
 import { MockPaymentsAdapter } from "./payments/mock";
@@ -32,7 +34,15 @@ export type AdapterType = keyof AdapterMap;
 
 export interface AdapterConfig {
   useMock?: boolean;
+  // Informational only -- does NOT gate capabilities. All PMS systems have
+  // identical read/write capabilities via NexHealth Synchronizer.
   pmsType?: "opendental" | "eaglesoft" | "dentrix";
+  nexhealthConfig?: {
+    apiKey: string;
+    subdomain: string;
+    locationId: string;
+    environment: "sandbox" | "production";
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -41,7 +51,8 @@ export interface AdapterConfig {
 const adapterCache = new Map<string, AdapterMap[AdapterType]>();
 
 function cacheKey(type: AdapterType, config?: AdapterConfig): string {
-  return `${type}:${config?.pmsType ?? "default"}:${config?.useMock ?? true}`;
+  const backend = config?.nexhealthConfig ? "nh" : "mock";
+  return `${type}:${backend}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -55,14 +66,16 @@ export function getAdapter<T extends AdapterType>(
   const cached = adapterCache.get(key);
   if (cached) return cached as AdapterMap[T];
 
-  // For now, always return mock adapters.
-  // When real adapters are implemented:
-  //   if (!config?.useMock) return new RealPmsAdapter(config);
   let adapter: AdapterMap[AdapterType];
 
   switch (type) {
     case "pms":
-      adapter = new MockPmsAdapter(config?.pmsType ?? "opendental");
+      if (!config?.useMock && config?.nexhealthConfig) {
+        const nhClient = new NexHealthApiClient(config.nexhealthConfig);
+        adapter = new NexHealthPmsAdapter(nhClient);
+      } else {
+        adapter = new MockPmsAdapter();
+      }
       break;
     case "clearinghouse":
       adapter = new MockClearinghouseAdapter();
@@ -92,7 +105,7 @@ export function getAdapter<T extends AdapterType>(
 // ---------------------------------------------------------------------------
 // Re-export interfaces for convenience
 // ---------------------------------------------------------------------------
-export type { PmsAdapter, PmsPatient, PmsAppointment, PmsProvider, PmsClaim } from "./pms/interface";
+export type { PmsAdapter, PmsPatient, PmsAppointment, PmsProvider, PmsClaim, PmsAppointmentType, PmsInsuranceCoverage, PmsRecall, PmsFeeSchedule, PmsProcedure, PmsPayment, PmsAdjustment, PmsCharge, PmsCapabilities } from "./pms/interface";
 export type { ClearinghouseAdapter, EligibilityResult, EligibilityBenefits, ClaimSubmissionData, ClaimSubmissionResult, ClaimStatusResult, EraRecord, SubscriberInfo } from "./clearinghouse/interface";
 export type { PaymentsAdapter, PaymentCustomer, PaymentIntent, PaymentLink, ChargeResult, RefundResult, PaymentMethod } from "./payments/interface";
 export type { SmsAdapter, SmsMessage, DeliveryStatus, IncomingAction } from "./sms/interface";

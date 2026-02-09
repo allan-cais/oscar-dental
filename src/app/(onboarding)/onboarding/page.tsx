@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
+import { useRouter } from "next/navigation"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -72,11 +73,13 @@ interface PracticeProfile {
 
 interface PmsConnection {
   type: PmsType
-  apiUrl: string
-  apiKey: string
-  koallaKey: string
+  apiKey: string        // NexHealth API key
+  subdomain: string     // NexHealth subdomain
+  locationId: string    // NexHealth location ID
+  environment: "sandbox" | "production"
   tested: boolean
   testing: boolean
+  providerCount?: number // providers found during test
 }
 
 interface Clearinghouse {
@@ -173,9 +176,10 @@ const DEFAULT_PRACTICE: PracticeProfile = {
 
 const DEFAULT_PMS: PmsConnection = {
   type: "opendental",
-  apiUrl: "https://api.opendental.canopydental.com/v1",
-  apiKey: "od_key_xxxxxxxxxxxxxxxxxxxx",
-  koallaKey: "",
+  apiKey: "",
+  subdomain: "canopy-dental",
+  locationId: "",
+  environment: "sandbox",
   tested: false,
   testing: false,
 }
@@ -214,15 +218,15 @@ const DEFAULT_TEAM: TeamMember[] = [
 ]
 
 const DEFAULT_SYNC: SyncItem[] = [
-  { label: "Patients", current: 200, total: 200, done: true },
-  { label: "Appointments", current: 500, total: 500, done: true },
-  { label: "Claims", current: 150, total: 200, done: false },
-  { label: "Insurance", current: 180, total: 200, done: false },
-  { label: "Providers", current: 6, total: 6, done: true },
+  { label: "Patients (via NexHealth)", current: 200, total: 200, done: true },
+  { label: "Appointments (via NexHealth)", current: 500, total: 500, done: true },
+  { label: "Claims (via NexHealth)", current: 150, total: 200, done: false },
+  { label: "Insurance (via NexHealth)", current: 180, total: 200, done: false },
+  { label: "Providers (via NexHealth)", current: 6, total: 6, done: true },
 ]
 
 const DEFAULT_HEALTH: HealthItem[] = [
-  { label: "PMS", provider: "OpenDental", status: "connected", responseTime: "45ms" },
+  { label: "PMS", provider: "NexHealth Synchronizer", status: "connected", responseTime: "45ms" },
   { label: "Clearinghouse", provider: "Vyne Dental", status: "connected", responseTime: "120ms" },
   { label: "SMS", provider: "Twilio", status: "connected", responseTime: "89ms" },
   { label: "Payments", provider: "Stripe", status: "connected", responseTime: "67ms" },
@@ -251,6 +255,14 @@ export default function OnboardingPage() {
   const [syncComplete, setSyncComplete] = useState(false)
   const [healthItems] = useState<HealthItem[]>(DEFAULT_HEALTH)
   const [launched, setLaunched] = useState(false)
+  const router = useRouter()
+
+  // Redirect to dashboard after launch
+  useEffect(() => {
+    if (!launched) return
+    const timeout = setTimeout(() => router.push("/dashboard"), 2000)
+    return () => clearTimeout(timeout)
+  }, [launched, router])
 
   // Simulate sync progress when on step 6
   useEffect(() => {
@@ -281,7 +293,9 @@ export default function OnboardingPage() {
   // -------------------------------------------------------------------------
   function handleTestPms() {
     setPms((p) => ({ ...p, testing: true, tested: false }))
-    setTimeout(() => setPms((p) => ({ ...p, testing: false, tested: true })), 1500)
+    setTimeout(() => {
+      setPms((p) => ({ ...p, testing: false, tested: true, providerCount: 4 }))
+    }, 2000)
   }
 
   // -------------------------------------------------------------------------
@@ -395,7 +409,7 @@ export default function OnboardingPage() {
       <Card>
         <CardHeader>
           <CardTitle>PMS Connection</CardTitle>
-          <CardDescription>Connect Oscar to your Practice Management System. Select your PMS and provide connection credentials.</CardDescription>
+          <CardDescription>Connect Oscar to your Practice Management System via NexHealth Synchronizer. The Synchronizer agent runs on-premises and provides a unified API to your PMS.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
           {/* PMS Selection */}
@@ -416,48 +430,89 @@ export default function OnboardingPage() {
                   <span className="font-semibold">{pmsLabel(type)}</span>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  {type === "opendental" ? "Full read/write API access" : "Read-only via Koalla API"}
+                  {type === "opendental" ? "Full read/write via NexHealth" : "Read-only via NexHealth"}
                 </p>
               </button>
             ))}
           </div>
 
-          {/* Connection fields */}
-          {pms.type === "opendental" ? (
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="apiUrl">API URL</Label>
-                <Input id="apiUrl" value={pms.apiUrl} onChange={(e) => setPms({ ...pms, apiUrl: e.target.value })} placeholder="https://api.opendental.yourpractice.com/v1" />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="apiKey">API Key</Label>
-                <Input id="apiKey" type="password" value={pms.apiKey} onChange={(e) => setPms({ ...pms, apiKey: e.target.value })} placeholder="od_key_..." />
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-900 dark:bg-amber-950/30">
-                <div className="flex items-start gap-2">
-                  <AlertTriangle className="size-4 mt-0.5 text-amber-600 dark:text-amber-400" />
-                  <p className="text-sm text-amber-800 dark:text-amber-200">
-                    <strong>Read-only access</strong> -- Scheduling and payment write-back will use the HITL task system for {pmsLabel(pms.type)}.
-                  </p>
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="koallaKey">Koalla API Key</Label>
-                <Input id="koallaKey" type="password" value={pms.koallaKey} onChange={(e) => setPms({ ...pms, koallaKey: e.target.value })} placeholder="koalla_key_..." />
+          {/* Read-only warning for Eaglesoft/Dentrix */}
+          {pms.type !== "opendental" && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-900 dark:bg-amber-950/30">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="size-4 mt-0.5 text-amber-600 dark:text-amber-400" />
+                <p className="text-sm text-amber-800 dark:text-amber-200">
+                  <strong>Read-only access</strong> — Scheduling and payment write-back will use the HITL task system for {pmsLabel(pms.type)}.
+                </p>
               </div>
             </div>
           )}
 
+          {/* NexHealth Synchronizer credentials */}
+          <div className="space-y-4">
+            <div className="rounded-lg border bg-muted/30 p-3">
+              <p className="text-sm text-muted-foreground">
+                Enter your NexHealth Synchronizer credentials below. These are provided by NexHealth when your on-premises agent is installed.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="nhApiKey">NexHealth API Key</Label>
+                <Input
+                  id="nhApiKey"
+                  type="password"
+                  value={pms.apiKey}
+                  onChange={(e) => setPms({ ...pms, apiKey: e.target.value, tested: false })}
+                  placeholder="Enter your API key"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="nhSubdomain">Subdomain</Label>
+                <Input
+                  id="nhSubdomain"
+                  value={pms.subdomain}
+                  onChange={(e) => setPms({ ...pms, subdomain: e.target.value, tested: false })}
+                  placeholder="your-practice"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="nhLocationId">Location ID</Label>
+                <Input
+                  id="nhLocationId"
+                  value={pms.locationId}
+                  onChange={(e) => setPms({ ...pms, locationId: e.target.value, tested: false })}
+                  placeholder="e.g. 12345"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="nhEnv">Environment</Label>
+                <Select
+                  value={pms.environment}
+                  onValueChange={(val) => setPms({ ...pms, environment: val as "sandbox" | "production", tested: false })}
+                >
+                  <SelectTrigger id="nhEnv">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="sandbox">Sandbox (Testing)</SelectItem>
+                    <SelectItem value="production">Production</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+
           {/* Test connection */}
           <div className="flex items-center gap-3">
-            <Button onClick={handleTestPms} disabled={pms.testing} variant={pms.tested ? "outline" : "default"}>
+            <Button onClick={handleTestPms} disabled={pms.testing || !pms.apiKey} variant={pms.tested ? "outline" : "default"}>
               {pms.testing ? (
                 <>
                   <Loader2 className="mr-2 size-4 animate-spin" />
-                  Testing...
+                  Connecting to NexHealth...
                 </>
               ) : pms.tested ? (
                 <>
@@ -470,7 +525,7 @@ export default function OnboardingPage() {
             </Button>
             {pms.tested && (
               <span className="text-sm text-emerald-600 dark:text-emerald-400 font-medium">
-                Successfully connected to {pmsLabel(pms.type)}
+                NexHealth Synchronizer connected — {pms.providerCount ?? 0} providers found
               </span>
             )}
           </div>
@@ -902,7 +957,8 @@ export default function OnboardingPage() {
             </CardHeader>
             <CardContent className="text-sm space-y-1">
               <p className="font-medium">{pmsLabel(pms.type)}</p>
-              <p className="text-muted-foreground">{pms.type === "opendental" ? "Full read/write" : "Read-only (Koalla)"}</p>
+              <p className="text-muted-foreground">via NexHealth Synchronizer</p>
+              <p className="text-muted-foreground">{pms.type === "opendental" ? "Full read/write" : "Read-only (HITL fallback)"}</p>
               <Badge variant={pms.tested ? "default" : "secondary"} className={pms.tested ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400" : ""}>
                 {pms.tested ? "Connected" : "Not tested"}
               </Badge>

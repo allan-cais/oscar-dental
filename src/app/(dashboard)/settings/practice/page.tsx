@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react"
 import { useQuery, useMutation } from "convex/react"
 import { api } from "../../../../../convex/_generated/api"
-import type { Id } from "../../../../../convex/_generated/dataModel"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -24,6 +23,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { DataEmptyState } from "@/components/ui/data-empty-state"
 import { Building2, Clock, Save, Wifi, WifiOff, AlertTriangle } from "lucide-react"
 
 const TIMEZONES = [
@@ -65,31 +65,6 @@ interface PracticeForm {
   timezone: string
   pmsType: string
   businessHours: typeof DEFAULT_HOURS
-}
-
-// Mock practice for when Convex is not connected
-const MOCK_PRACTICE = {
-  _id: "mock_practice" as Id<"practices">,
-  _creationTime: 0,
-  orgId: "mock",
-  name: "Canopy Dental - Main Office",
-  address: {
-    street: "123 Oak Avenue",
-    city: "Austin",
-    state: "TX",
-    zip: "78701",
-  },
-  phone: "(512) 555-0100",
-  email: "office@canopydental.com",
-  npi: "1234567890",
-  taxId: "12-3456789",
-  timezone: "America/Chicago",
-  pmsType: "opendental" as const,
-  pmsConnectionStatus: "connected" as const,
-  lastSyncAt: Date.now() - 300000,
-  businessHours: DEFAULT_HOURS,
-  createdAt: Date.now() - 86400000 * 90,
-  updatedAt: Date.now(),
 }
 
 function connectionStatusBadge(
@@ -150,42 +125,34 @@ export default function PracticeSettingsPage() {
     businessHours: DEFAULT_HOURS,
   })
 
-  // Try Convex, fall back to mock
-  let practices: typeof MOCK_PRACTICE[] | undefined
-  let convexError = false
-  try {
-    // eslint-disable-next-line react-hooks/rules-of-hooks
-    const result = useQuery(api.practices.queries.list)
-    practices = result ?? undefined
-  } catch {
-    convexError = true
-    practices = [MOCK_PRACTICE]
-  }
+  // Load from Convex
+  const practicesData = useQuery(api.practices.queries.list as any, {})
 
   let updatePractice: ((args: any) => Promise<any>) | null = null
   try {
     // eslint-disable-next-line react-hooks/rules-of-hooks
-    updatePractice = useMutation(api.practices.mutations.update)
+    updatePractice = useMutation(api.practices.mutations.update as any)
   } catch {
     // Mutation unavailable
   }
 
+  const practices = (practicesData as any[]) ?? []
   const practice = practices?.[0]
 
   // Populate form when practice loads
   useEffect(() => {
     if (practice) {
       setForm({
-        name: practice.name,
-        street: practice.address.street,
-        city: practice.address.city,
-        state: practice.address.state,
-        zip: practice.address.zip,
-        phone: practice.phone,
-        email: practice.email,
+        name: practice.name || "",
+        street: practice.address?.street || "",
+        city: practice.address?.city || "",
+        state: practice.address?.state || "",
+        zip: practice.address?.zip || "",
+        phone: practice.phone || "",
+        email: practice.email || "",
         npi: practice.npi ?? "",
         taxId: practice.taxId ?? "",
-        timezone: practice.timezone,
+        timezone: practice.timezone || "America/Chicago",
         pmsType: practice.pmsType ?? "",
         businessHours: practice.businessHours ?? DEFAULT_HOURS,
       })
@@ -235,11 +202,34 @@ export default function PracticeSettingsPage() {
     }
   }
 
-  if (!practice) {
+  // Loading state
+  if (practicesData === undefined) {
     return (
-      <div className="flex h-64 items-center justify-center text-muted-foreground">
-        <div className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent mr-2" />
-        Loading practice settings...
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">Practice Settings</h1>
+            <p className="text-muted-foreground">Manage your practice profile, business hours, and PMS connection.</p>
+          </div>
+        </div>
+        {[1, 2, 3, 4, 5].map((i) => (
+          <div key={i} className="h-40 bg-muted animate-pulse rounded-lg" />
+        ))}
+      </div>
+    )
+  }
+
+  // Empty state
+  if (practices.length === 0) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">Practice Settings</h1>
+            <p className="text-muted-foreground">Manage your practice profile, business hours, and PMS connection.</p>
+          </div>
+        </div>
+        <DataEmptyState resource="practice" message="No practice configured yet. Complete the onboarding wizard to set up your practice." />
       </div>
     )
   }
@@ -260,16 +250,6 @@ export default function PracticeSettingsPage() {
           {saving ? "Saving..." : "Save Changes"}
         </Button>
       </div>
-
-      {convexError && (
-        <Card className="border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/30">
-          <CardContent className="pt-6">
-            <p className="text-sm text-amber-800 dark:text-amber-200">
-              Convex backend is not connected. Displaying mock data for preview.
-            </p>
-          </CardContent>
-        </Card>
-      )}
 
       {/* Practice Profile */}
       <Card>
@@ -392,14 +372,14 @@ export default function PracticeSettingsPage() {
         <CardContent>
           <div className="flex items-center justify-between rounded-lg border p-4">
             <div className="space-y-1">
-              <p className="font-medium">{pmsLabel(practice.pmsType)}</p>
+              <p className="font-medium">{pmsLabel(practice?.pmsType)}</p>
               <p className="text-sm text-muted-foreground">
-                {practice.lastSyncAt
+                {practice?.lastSyncAt
                   ? `Last synced ${new Date(practice.lastSyncAt).toLocaleString()}`
                   : "Never synced"}
               </p>
             </div>
-            {connectionStatusBadge(practice.pmsConnectionStatus)}
+            {connectionStatusBadge(practice?.pmsConnectionStatus)}
           </div>
         </CardContent>
       </Card>
