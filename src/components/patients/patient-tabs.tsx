@@ -127,6 +127,18 @@ function OverviewTab({ patient, patientId }: { patient: PatientData | null; pati
     }
   }
 
+  // Query appointment types for type name resolution
+  const appointmentTypes = useQuery(api.appointmentTypes.queries.list as any, {}) as any[] | undefined
+  const apptTypeMap = new Map<string, string>()
+  if (appointmentTypes) {
+    for (const at of appointmentTypes) {
+      apptTypeMap.set(at._id, at.name)
+      if (at.pmsAppointmentTypeId) {
+        apptTypeMap.set(at.pmsAppointmentTypeId, at.name)
+      }
+    }
+  }
+
   // Find next upcoming appointment
   const today = new Date().toISOString().split("T")[0]
   const nextAppt = appointments
@@ -163,7 +175,7 @@ function OverviewTab({ patient, patientId }: { patient: PatientData | null; pati
           {nextAppt ? (
             <div className="text-sm text-muted-foreground">
               <p>{providerMap.get(nextAppt.providerId) ?? "Provider"}</p>
-              <p>{nextAppt.appointmentType ?? "Appointment"} - {formatTime(nextAppt.startTime)}</p>
+              <p>{(nextAppt.appointmentTypeId && apptTypeMap.get(nextAppt.appointmentTypeId)) || nextAppt.appointmentType || "Appointment"} - {formatTime(nextAppt.startTime)}</p>
             </div>
           ) : (
             <p className="text-sm text-muted-foreground">None scheduled</p>
@@ -226,7 +238,7 @@ function OverviewTab({ patient, patientId }: { patient: PatientData | null; pati
         <CardContent>
           <p className="text-sm text-muted-foreground">
             {lastVisit
-              ? `${providerMap.get(lastVisit.providerId) ?? "Provider"} - ${lastVisit.appointmentType ?? "Visit"}`
+              ? `${providerMap.get(lastVisit.providerId) ?? "Provider"} - ${(lastVisit.appointmentTypeId && apptTypeMap.get(lastVisit.appointmentTypeId)) || lastVisit.appointmentType || "Visit"}`
               : "No visits on record"}
           </p>
         </CardContent>
@@ -470,6 +482,18 @@ function AppointmentsTab({ patient, patientId }: { patient: PatientData | null; 
     }
   }
 
+  // Query appointment types for type name resolution
+  const appointmentTypes = useQuery(api.appointmentTypes.queries.list as any, {}) as any[] | undefined
+  const apptTypeMap = new Map<string, string>()
+  if (appointmentTypes) {
+    for (const at of appointmentTypes) {
+      apptTypeMap.set(at._id, at.name)
+      if (at.pmsAppointmentTypeId) {
+        apptTypeMap.set(at.pmsAppointmentTypeId, at.name)
+      }
+    }
+  }
+
   const today = new Date().toISOString().split("T")[0]
   const upcoming = appointments?.filter((a: any) => a.date >= today) ?? []
   const past = appointments?.filter((a: any) => a.date < today) ?? []
@@ -524,7 +548,7 @@ function AppointmentsTab({ patient, patientId }: { patient: PatientData | null; 
                       <TableCell>{formatDate(appt.date)}</TableCell>
                       <TableCell>{appt.startTime}</TableCell>
                       <TableCell>{providerMap.get(appt.providerId) ?? "Provider"}</TableCell>
-                      <TableCell>{appt.appointmentType ?? "—"}</TableCell>
+                      <TableCell>{(appt.appointmentTypeId && apptTypeMap.get(appt.appointmentTypeId)) || appt.appointmentType || "—"}</TableCell>
                       <TableCell>
                         <Badge
                           variant="outline"
@@ -573,7 +597,7 @@ function AppointmentsTab({ patient, patientId }: { patient: PatientData | null; 
                       <TableCell>{formatDate(appt.date)}</TableCell>
                       <TableCell>{appt.startTime}</TableCell>
                       <TableCell>{providerMap.get(appt.providerId) ?? "Provider"}</TableCell>
-                      <TableCell>{appt.appointmentType ?? "—"}</TableCell>
+                      <TableCell>{(appt.appointmentTypeId && apptTypeMap.get(appt.appointmentTypeId)) || appt.appointmentType || "—"}</TableCell>
                       <TableCell>
                         <Badge
                           variant="outline"

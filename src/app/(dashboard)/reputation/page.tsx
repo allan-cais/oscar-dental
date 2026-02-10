@@ -334,13 +334,8 @@ export default function ReputationPage() {
   const [filterSentiment, setFilterSentiment] = useState<string>("all")
 
   // Try Convex, fall back to mock
-  let convexError = false
-  try {
-    // eslint-disable-next-line react-hooks/rules-of-hooks
-    useQuery(api.reputation?.queries?.getDashboard as any)
-  } catch {
-    convexError = true
-  }
+  const convexError = false
+  const _reputationData = useQuery(api.reputation?.queries?.getDashboard as any)
 
   const reviews = MOCK_REVIEWS
   const trends = MOCK_MONTH_TRENDS

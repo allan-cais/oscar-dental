@@ -160,39 +160,9 @@ export default function QuickFillPage() {
   const queueData = useQuery(api.quickfill.queries.list as any, {})
   const gapFillData = useQuery(api.quickfill.queries.getGapFillToolbox as any, {})
 
-  // Mutations (best-effort)
-  let addToQueue: ((args: Record<string, unknown>) => Promise<unknown>) | null = null
-  let removeFromQueue: ((args: Record<string, unknown>) => Promise<unknown>) | null = null
-  try {
-    // eslint-disable-next-line react-hooks/rules-of-hooks
-    addToQueue = useMutation(api.quickfill.mutations.addToQueue) as any
-    // eslint-disable-next-line react-hooks/rules-of-hooks
-    removeFromQueue = useMutation(api.quickfill.mutations.removeFromQueue) as any
-  } catch {
-    // Mutations unavailable
-  }
-
-  // Loading state
-  if (queueData === undefined) {
-    return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight">Quick Fill Queue</h1>
-            <p className="text-muted-foreground">Manage patient waitlist and fill schedule gaps efficiently.</p>
-          </div>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="h-20 bg-muted animate-pulse rounded-lg" />
-          ))}
-        </div>
-        {[1, 2].map((i) => (
-          <div key={i} className="h-60 bg-muted animate-pulse rounded-lg" />
-        ))}
-      </div>
-    )
-  }
+  // Mutations — always call hooks unconditionally
+  const addToQueue = useMutation(api.quickfill.mutations.addToQueue as any) as ((args: Record<string, unknown>) => Promise<unknown>) | null
+  const removeFromQueue = useMutation(api.quickfill.mutations.removeFromQueue as any) as ((args: Record<string, unknown>) => Promise<unknown>) | null
 
   // list returns { items, totalCount } — extract items array
   const rawQueue = queueData && typeof queueData === "object" && "items" in (queueData as any)
@@ -229,6 +199,28 @@ export default function QuickFillPage() {
     const minMonths = parseInt(overdueFilter)
     return overdueHygiene.filter((h: any) => (h.monthsOverdue || 0) >= minMonths)
   }, [overdueHygiene, overdueFilter])
+
+  // Loading state — after all hooks
+  if (queueData === undefined) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">Quick Fill Queue</h1>
+            <p className="text-muted-foreground">Manage patient waitlist and fill schedule gaps efficiently.</p>
+          </div>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="h-20 bg-muted animate-pulse rounded-lg" />
+          ))}
+        </div>
+        {[1, 2].map((i) => (
+          <div key={i} className="h-60 bg-muted animate-pulse rounded-lg" />
+        ))}
+      </div>
+    )
+  }
 
   function toggleDay(day: string) {
     setAddForm((prev) => ({

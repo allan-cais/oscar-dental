@@ -241,22 +241,27 @@ export default function PaymentPlansPage() {
   const rawPlansResult = useQuery(api.paymentPlans.queries.list as any, {})
   const rawPlans = rawPlansResult ? (rawPlansResult as any).plans ?? rawPlansResult : undefined
 
-  // Query patients for the create dialog
-  const rawPatients = useQuery((api as any).patients.queries.list, {})
+  // Query patients for name lookup + create dialog
+  const rawPatients = useQuery((api as any).patients.queries.list, { limit: 1000, status: "all" as const })
 
-  let createPlan: ((args: any) => Promise<any>) | null = null
-  let recordPayment: ((args: any) => Promise<any>) | null = null
-  let cancelPlan: ((args: any) => Promise<any>) | null = null
-  try {
-    // eslint-disable-next-line react-hooks/rules-of-hooks
-    createPlan = useMutation(api.paymentPlans.mutations.create as any)
-    // eslint-disable-next-line react-hooks/rules-of-hooks
-    recordPayment = useMutation(api.paymentPlans.mutations.recordPayment as any)
-    // eslint-disable-next-line react-hooks/rules-of-hooks
-    cancelPlan = useMutation(api.paymentPlans.mutations.cancel as any)
-  } catch {
-    // Mutations unavailable when Convex is not connected
-  }
+  // Build patient name lookup map (keyed by both _id and pmsPatientId)
+  const patientMap = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const p of (rawPatients?.patients ?? [])) {
+      const name = `${(p as any).firstName ?? ""} ${(p as any).lastName ?? ""}`.trim()
+      if (name) {
+        map.set((p as any)._id, name)
+        if ((p as any).pmsPatientId) {
+          map.set((p as any).pmsPatientId, name)
+        }
+      }
+    }
+    return map
+  }, [rawPatients])
+
+  const createPlan = useMutation(api.paymentPlans.mutations.create as any) as ((args: any) => Promise<any>) | null
+  const recordPayment = useMutation(api.paymentPlans.mutations.recordPayment as any) as ((args: any) => Promise<any>) | null
+  const cancelPlan = useMutation(api.paymentPlans.mutations.cancel as any) as ((args: any) => Promise<any>) | null
 
   // Loading state
   if (rawPlans === undefined) {
@@ -303,14 +308,18 @@ export default function PaymentPlansPage() {
     )
   }
 
-  // Normalize plans from Convex schema shape
-  const plans: PaymentPlan[] = (rawPlans as any[]).map(normalizePlan)
-  const patients = Array.isArray(rawPatients)
-    ? (rawPatients as any[]).map((p: any) => ({
-        id: p._id,
-        name: `${p.firstName ?? ""} ${p.lastName ?? ""}`.trim() || "Unknown",
-      }))
-    : []
+  // Normalize plans from Convex schema shape, resolving patient names via lookup
+  const plans: PaymentPlan[] = (rawPlans as any[]).map((raw: any) => {
+    const plan = normalizePlan(raw)
+    if (!plan.patientName || plan.patientName === "Unknown") {
+      plan.patientName = patientMap.get(plan.patientId) ?? "Unknown"
+    }
+    return plan
+  })
+  const patients: { id: string; name: string }[] = (rawPatients?.patients ?? []).map((p: any) => ({
+    id: p._id,
+    name: `${p.firstName ?? ""} ${p.lastName ?? ""}`.trim() || "Unknown",
+  }))
 
   const filtered = plans.filter((plan) => {
     const patientName = plan.patientName ?? ""

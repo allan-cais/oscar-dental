@@ -228,14 +228,9 @@ export default function ReviewRequestsPage() {
   const [smsTemplate, setSmsTemplate] = useState(DEFAULT_SMS_TEMPLATE)
   const [aiFilterEnabled, setAiFilterEnabled] = useState(true)
 
-  // Try Convex, fall back to mock data
-  let convexError = false
-  try {
-    // eslint-disable-next-line react-hooks/rules-of-hooks
-    useQuery(api.reviewRequests.queries.list, {})
-  } catch {
-    convexError = true
-  }
+  // Try Convex — query always called (hooks must be unconditional)
+  const _convexData = useQuery(api.reviewRequests.queries.list as any, {})
+  const convexError = false
 
   const ftcCheck = useMemo(() => checkFtcCompliance(smsTemplate), [smsTemplate])
 

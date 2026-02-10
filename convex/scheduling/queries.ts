@@ -144,19 +144,37 @@ export const getById = query({
 });
 
 /**
- * Get all appointments for a specific date, ordered by startTime.
+ * Get all appointments for a specific date (or date range), ordered by startTime.
  * Enriches each appointment with patient name/DOB, operatory name,
  * and appointment type name so the calendar UI can display them.
+ *
+ * When `dateEnd` is provided, queries a range [date, dateEnd] inclusive.
+ * This is useful for handling timezone offsets — appointment dates synced
+ * from NexHealth are stored in UTC, so a local date may span two UTC dates.
  */
 export const getByDate = query({
-  args: { date: v.string() },
+  args: {
+    date: v.string(),
+    dateEnd: v.optional(v.string()),
+  },
   handler: async (ctx, args) => {
     const orgId = await getOrgId(ctx);
 
-    const appointments = await ctx.db
-      .query("appointments")
-      .withIndex("by_date", (q) => q.eq("orgId", orgId).eq("date", args.date))
-      .collect();
+    let appointments;
+    if (args.dateEnd && args.dateEnd !== args.date) {
+      // Range query to handle timezone offsets
+      appointments = await ctx.db
+        .query("appointments")
+        .withIndex("by_date", (q) =>
+          q.eq("orgId", orgId).gte("date", args.date).lte("date", args.dateEnd!)
+        )
+        .collect();
+    } else {
+      appointments = await ctx.db
+        .query("appointments")
+        .withIndex("by_date", (q) => q.eq("orgId", orgId).eq("date", args.date))
+        .collect();
+    }
 
     const enriched = await Promise.all(
       appointments.map(async (a) => {

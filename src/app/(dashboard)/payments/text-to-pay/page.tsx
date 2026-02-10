@@ -324,31 +324,14 @@ export default function TextToPayPage() {
   const [sendingLink, setSendingLink] = useState(false)
 
   // Convex with fallback
-  let paymentLinks: MockPaymentLink[] | undefined
-  let convexError = false
-  try {
-    // eslint-disable-next-line react-hooks/rules-of-hooks
-    const result = useQuery(api.textToPay.queries.list, {})
-    // Query returns { paymentLinks: [...], totalCount } — extract the array
-    paymentLinks = result ? (result as any).paymentLinks ?? result : undefined
-  } catch {
-    convexError = true
-    paymentLinks = MOCK_PAYMENT_LINKS
-  }
+  const convexError = false
+  const _queryResult = useQuery(api.textToPay.queries.list as any, {})
+  // Query returns { paymentLinks: [...], totalCount } — extract the array
+  const paymentLinks: MockPaymentLink[] | undefined = _queryResult ? (_queryResult as any).paymentLinks ?? _queryResult : undefined
 
-  let sendPaymentLink: ((args: any) => Promise<any>) | null = null
-  let resendPaymentLink: ((args: any) => Promise<any>) | null = null
-  let cancelPaymentLink: ((args: any) => Promise<any>) | null = null
-  try {
-    // eslint-disable-next-line react-hooks/rules-of-hooks
-    sendPaymentLink = useMutation(api.textToPay.mutations.createPaymentLink)
-    // eslint-disable-next-line react-hooks/rules-of-hooks
-    resendPaymentLink = useMutation(api.textToPay.mutations.sendViaSms)
-    // eslint-disable-next-line react-hooks/rules-of-hooks
-    cancelPaymentLink = useMutation(api.textToPay.mutations.expire)
-  } catch {
-    // Mutations unavailable when Convex is not connected
-  }
+  const sendPaymentLink = useMutation(api.textToPay.mutations.createPaymentLink as any) as ((args: any) => Promise<any>) | null
+  const resendPaymentLink = useMutation(api.textToPay.mutations.sendViaSms as any) as ((args: any) => Promise<any>) | null
+  const cancelPaymentLink = useMutation(api.textToPay.mutations.expire as any) as ((args: any) => Promise<any>) | null
 
   const data = paymentLinks ?? MOCK_PAYMENT_LINKS
 

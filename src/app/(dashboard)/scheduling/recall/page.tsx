@@ -126,57 +126,13 @@ export default function RecallManagementPage() {
   const recallsData = useQuery(api.recall.queries.getDueList as any, {})
 
   // Mutations (best-effort)
-  let sendOutreach: ((args: Record<string, unknown>) => Promise<unknown>) | null = null
-  try {
-    // eslint-disable-next-line react-hooks/rules-of-hooks
-    sendOutreach = useMutation(api.recall.mutations.recordOutreach) as any
-  } catch {
-    // Mutations unavailable
-  }
-
-  // Loading state
-  if (recallsData === undefined) {
-    return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight">Recall Management</h1>
-            <p className="text-muted-foreground">Track and manage patient recall appointments.</p>
-          </div>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-          {[1, 2, 3, 4, 5].map((i) => (
-            <div key={i} className="h-20 bg-muted animate-pulse rounded-lg" />
-          ))}
-        </div>
-        <div className="h-40 bg-muted animate-pulse rounded-lg" />
-        <div className="h-80 bg-muted animate-pulse rounded-lg" />
-      </div>
-    )
-  }
+  const sendOutreach = useMutation(api.recall.mutations.recordOutreach as any) as ((args: Record<string, unknown>) => Promise<unknown>) | null
 
   // getDueList returns { items, totalCount } — extract items array
   const rawItems = recallsData && typeof recallsData === "object" && "items" in (recallsData as any)
     ? (recallsData as any).items
     : recallsData
   const items = (rawItems as RecallItem[]) ?? []
-
-  // Empty state
-  if (items.length === 0) {
-    return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight">Recall Management</h1>
-            <p className="text-muted-foreground">
-              Track and manage patient recall appointments to maximize schedule utilization.
-            </p>
-          </div>
-        </div>
-        <DataEmptyState resource="recall records" message="No recall records found. Recall data will appear after syncing patient records from your PMS." />
-      </div>
-    )
-  }
 
   // Stats
   const totalDue = items.length
@@ -225,6 +181,44 @@ export default function RecallManagementPage() {
       return matchesType && (r.status === "due" || r.status === "contacted" || r.status === "no_response")
     }).length
   }, [items, batchForm.recallType])
+
+  // Loading state — after all hooks
+  if (recallsData === undefined) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">Recall Management</h1>
+            <p className="text-muted-foreground">Track and manage patient recall appointments.</p>
+          </div>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+          {[1, 2, 3, 4, 5].map((i) => (
+            <div key={i} className="h-20 bg-muted animate-pulse rounded-lg" />
+          ))}
+        </div>
+        <div className="h-40 bg-muted animate-pulse rounded-lg" />
+        <div className="h-80 bg-muted animate-pulse rounded-lg" />
+      </div>
+    )
+  }
+
+  // Empty state
+  if (items.length === 0) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">Recall Management</h1>
+            <p className="text-muted-foreground">
+              Track and manage patient recall appointments to maximize schedule utilization.
+            </p>
+          </div>
+        </div>
+        <DataEmptyState resource="recall records" message="No recall records found. Recall data will appear after syncing patient records from your PMS." />
+      </div>
+    )
+  }
 
   function toggleRow(id: string) {
     setExpandedRows((prev) => {

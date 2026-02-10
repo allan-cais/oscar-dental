@@ -128,13 +128,7 @@ export default function PracticeSettingsPage() {
   // Load from Convex
   const practicesData = useQuery(api.practices.queries.list as any, {})
 
-  let updatePractice: ((args: any) => Promise<any>) | null = null
-  try {
-    // eslint-disable-next-line react-hooks/rules-of-hooks
-    updatePractice = useMutation(api.practices.mutations.update as any)
-  } catch {
-    // Mutation unavailable
-  }
+  const updatePractice = useMutation(api.practices.mutations.update as any) as ((args: any) => Promise<any>) | null
 
   const practices = (practicesData as any[]) ?? []
   const practice = practices?.[0]

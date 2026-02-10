@@ -89,13 +89,19 @@ export default function DenialsPage() {
   const denialsResult = useQuery(api.denials.queries.list, {})
   const denials = denialsResult?.denials ?? []
   const statsResult = useQuery((api as any).denials.queries.getStats)
-  const patientsResult = useQuery(api.patients.queries.list, {})
+  const patientsResult = useQuery(api.patients.queries.list, { limit: 1000, status: "all" as const })
 
-  // Build patient name lookup map
+  // Build patient name lookup map (keyed by both _id and pmsPatientId)
   const patientMap = useMemo(() => {
     const map = new Map<string, string>()
     for (const p of (patientsResult?.patients ?? [])) {
-      map.set((p as any)._id, `${(p as any).firstName ?? ""} ${(p as any).lastName ?? ""}`.trim())
+      const name = `${(p as any).firstName ?? ""} ${(p as any).lastName ?? ""}`.trim()
+      if (name) {
+        map.set((p as any)._id, name)
+        if ((p as any).pmsPatientId) {
+          map.set((p as any).pmsPatientId, name)
+        }
+      }
     }
     return map
   }, [patientsResult])

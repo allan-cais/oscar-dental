@@ -143,7 +143,8 @@ function alertBadge(daysUntil: number): { label: string; className: string } {
 
 function buildReconciliationData(
   rawPayments: any[],
-  rawClaims: any[]
+  rawClaims: any[],
+  patientMap: Map<string, string>
 ): {
   matched: MatchedERA[]
   unmatched: UnmatchedERA[]
@@ -171,7 +172,8 @@ function buildReconciliationData(
     const checkNumber = payment.pmsPaymentId ?? paymentId
     const payer = payment.paymentMethod ?? "Insurance"
     const checkDate = payment.date ?? new Date(payment.createdAt).toISOString().split("T")[0]
-    const patientId = payment.pmsPatientId ?? "unknown"
+    const rawPatientId = payment.pmsPatientId ?? "unknown"
+    const patientName = patientMap.get(rawPatientId) ?? patientMap.get(payment.patientId ?? "") ?? rawPatientId
 
     if (matchedClaim) {
       const charged = matchedClaim.totalAmount ?? 0
@@ -185,7 +187,7 @@ function buildReconciliationData(
           id: paymentId,
           checkNumber: String(checkNumber),
           payer,
-          patient: patientId,
+          patient: patientName,
           matchedClaim: matchedClaim.pmsClaimId ?? matchedClaim._id ?? "",
           issue: "Partial Payment",
           eraAmount: paid,
@@ -198,7 +200,7 @@ function buildReconciliationData(
           id: paymentId,
           checkNumber: String(checkNumber),
           payer,
-          patient: patientId,
+          patient: patientName,
           matchedClaim: matchedClaim.pmsClaimId ?? matchedClaim._id ?? "",
           issue: "Amount Mismatch",
           eraAmount: paid,
@@ -212,7 +214,7 @@ function buildReconciliationData(
           checkNumber: String(checkNumber),
           payer,
           checkDate,
-          patient: patientId,
+          patient: patientName,
           claimNumber: matchedClaim.pmsClaimId ?? matchedClaim._id ?? "",
           charged,
           paid,
@@ -228,7 +230,7 @@ function buildReconciliationData(
         checkNumber: String(checkNumber),
         payer,
         checkDate,
-        patientName: patientId,
+        patientName,
         amountPaid: payment.amount ?? 0,
         remarkCodes: [],
       })
@@ -246,9 +248,10 @@ function buildReconciliationData(
     .map((c: any, i: number) => {
       const submittedTs = new Date(c.submittedDate).getTime()
       const daysSinceSubmit = Math.floor((now - submittedTs) / (1000 * 60 * 60 * 24))
+      const claimPatientId = c.pmsPatientId ?? ""
       return {
         id: c._id ?? `overdue-${i}`,
-        patient: c.pmsPatientId ?? "Unknown",
+        patient: patientMap.get(claimPatientId) ?? patientMap.get(c.patientId ?? "") ?? (claimPatientId || "Unknown"),
         balance: c.totalAmount - (c.paidAmount ?? 0),
         nextAppointment: "",
         daysUntil: Math.max(0, 30 - daysSinceSubmit),
@@ -280,9 +283,25 @@ export default function ReconciliationPage() {
   // Bulk selection for exceptions
   const [selectedExceptions, setSelectedExceptions] = useState<Set<string>>(new Set())
 
-  // Fetch payments and claims from Convex
+  // Fetch payments, claims, and patients from Convex
   const rawPayments = useQuery((api as any).pmsPayments.queries.list, {})
   const rawClaims = useQuery((api as any).pmsClaims.queries.list, {})
+  const patientsResult = useQuery(api.patients.queries.list, { limit: 1000, status: "all" as const })
+
+  // Build patient name lookup map (keyed by both _id and pmsPatientId)
+  const patientMap = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const p of (patientsResult?.patients ?? [])) {
+      const name = `${(p as any).firstName ?? ""} ${(p as any).lastName ?? ""}`.trim()
+      if (name) {
+        map.set((p as any)._id, name)
+        if ((p as any).pmsPatientId) {
+          map.set((p as any).pmsPatientId, name)
+        }
+      }
+    }
+    return map
+  }, [patientsResult])
 
   // Loading state
   if (rawPayments === undefined || rawClaims === undefined) {
@@ -326,7 +345,8 @@ export default function ReconciliationPage() {
   // Build reconciliation data from raw queries
   const { matched, unmatched, exceptions, overdue } = buildReconciliationData(
     rawPayments as any[],
-    rawClaims as any[]
+    rawClaims as any[],
+    patientMap
   )
 
   // Compute stats

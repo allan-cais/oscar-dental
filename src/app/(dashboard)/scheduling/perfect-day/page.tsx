@@ -52,11 +52,28 @@ import {
 type SlotData = {
   startTime: string
   endTime: string
-  appointmentType: string
+  appointmentType?: string
   category: string
-  provider: string
-  operatory: string
-  value: number
+  provider?: string
+  operatory?: string
+  value?: number
+  productionTarget?: number
+}
+
+/** Safely extract a numeric production value from a slot */
+function getSlotValue(slot: SlotData): number {
+  const v = slot.value ?? slot.productionTarget
+  return typeof v === "number" && !isNaN(v) ? v : 0
+}
+
+/** Safely extract the operatory label from a slot */
+function getSlotOperatory(slot: SlotData): string {
+  return slot.operatory || "Unassigned"
+}
+
+/** Safely extract the display label for a slot */
+function getSlotLabel(slot: SlotData): string {
+  return slot.appointmentType || slot.category || "Slot"
 }
 
 type TemplateData = {
@@ -125,7 +142,8 @@ function getCategoryColor(category: string): {
   text: string
   badge: string
 } {
-  switch (category) {
+  const normalized = category.charAt(0).toUpperCase() + category.slice(1).toLowerCase()
+  switch (normalized) {
     case "Hygiene":
       return {
         bg: "bg-blue-100 dark:bg-blue-900/30",
@@ -159,6 +177,8 @@ function getCategoryColor(category: string): {
         badge:
           "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300",
       }
+    case "Diagnostic":
+    case "Preventive":
     case "Admin":
     default:
       return {
@@ -203,27 +223,6 @@ export default function PerfectDayPage() {
   const operatoriesData = useQuery(api.operatories.queries.list as any, {})
   const providersData = useQuery(api.providers.queries.list as any, {})
   const templatesData = useQuery(api.perfectday.queries.getTemplates as any, {})
-
-  // Loading state
-  if (operatoriesData === undefined || providersData === undefined || templatesData === undefined) {
-    return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight">Perfect Day Templates</h1>
-            <p className="text-muted-foreground">Define ideal schedule templates for each day of the week.</p>
-          </div>
-        </div>
-        <div className="h-12 bg-muted animate-pulse rounded-lg" />
-        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-          {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="h-20 bg-muted animate-pulse rounded-lg" />
-          ))}
-        </div>
-        <div className="h-96 bg-muted animate-pulse rounded-lg" />
-      </div>
-    )
-  }
 
   const operatories = (operatoriesData as any[]) ?? []
   const providersList = (providersData as any[]) ?? []
@@ -277,7 +276,7 @@ export default function PerfectDayPage() {
     }
     const totalSlots = currentTemplate.slots.length
     const productionTarget = currentTemplate.slots.reduce(
-      (sum, s) => sum + (s.value || 0),
+      (sum, s) => sum + getSlotValue(s),
       0
     )
 
@@ -286,7 +285,7 @@ export default function PerfectDayPage() {
     }, 0)
     const providerHours = Math.round((providerMinutes / 60) * 10) / 10
 
-    const usedOps = new Set(currentTemplate.slots.map((s) => s.operatory))
+    const usedOps = new Set(currentTemplate.slots.map((s) => getSlotOperatory(s)))
     const availableMinutes = usedOps.size * 540 // 9 productive hours
     const utilization =
       availableMinutes > 0
@@ -301,8 +300,9 @@ export default function PerfectDayPage() {
     if (!currentTemplate) return {}
     const map: Record<string, SlotData[]> = {}
     for (const slot of currentTemplate.slots) {
-      if (!map[slot.operatory]) map[slot.operatory] = []
-      map[slot.operatory].push(slot)
+      const opKey = getSlotOperatory(slot)
+      if (!map[opKey]) map[opKey] = []
+      map[opKey].push(slot)
     }
     for (const key of Object.keys(map)) {
       map[key].sort(
@@ -319,16 +319,37 @@ export default function PerfectDayPage() {
     return ops.sort((a, b) => order.indexOf(a) - order.indexOf(b))
   }, [slotsByOperatory, operatories])
 
+  // Loading state — after all hooks
+  if (operatoriesData === undefined || providersData === undefined || templatesData === undefined) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">Perfect Day Templates</h1>
+            <p className="text-muted-foreground">Define ideal schedule templates for each day of the week.</p>
+          </div>
+        </div>
+        <div className="h-12 bg-muted animate-pulse rounded-lg" />
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="h-20 bg-muted animate-pulse rounded-lg" />
+          ))}
+        </div>
+        <div className="h-96 bg-muted animate-pulse rounded-lg" />
+      </div>
+    )
+  }
+
   function openEditSlot(slot: SlotData, index: number) {
     setEditSlot({ slot, index })
     setEditForm({
-      appointmentType: slot.appointmentType,
+      appointmentType: slot.appointmentType || slot.category || "",
       category: slot.category,
-      provider: slot.provider,
-      operatory: slot.operatory,
+      provider: slot.provider || "",
+      operatory: getSlotOperatory(slot),
       startTime: slot.startTime,
       endTime: slot.endTime,
-      value: String(slot.value),
+      value: String(getSlotValue(slot)),
     })
     setEditOpen(true)
   }
@@ -554,20 +575,22 @@ export default function PerfectDayPage() {
                                       >
                                         <div className="flex items-center justify-between gap-1">
                                           <span className="truncate text-xs font-semibold">
-                                            {slotHere.appointmentType}
+                                            {getSlotLabel(slotHere)}
                                           </span>
                                           <Pencil className="size-3 shrink-0 opacity-0 transition-opacity group-hover:opacity-100" />
                                         </div>
-                                        <span className="mt-0.5 text-[10px] opacity-80">
-                                          {slotHere.provider}
-                                        </span>
+                                        {slotHere.provider && (
+                                          <span className="mt-0.5 text-[10px] opacity-80">
+                                            {slotHere.provider}
+                                          </span>
+                                        )}
                                         <span className="text-[10px] opacity-70">
                                           {formatTime(slotHere.startTime)} -{" "}
                                           {formatTime(slotHere.endTime)}
                                         </span>
                                         {spanRows >= 2 && (
                                           <span className="mt-auto text-[10px] font-medium">
-                                            {formatCurrency(slotHere.value)}
+                                            {formatCurrency(getSlotValue(slotHere))}
                                           </span>
                                         )}
                                       </button>

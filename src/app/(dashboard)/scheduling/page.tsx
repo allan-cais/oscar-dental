@@ -49,9 +49,16 @@ export default function SchedulingPage() {
   const [detailAppt, setDetailAppt] = useState<DemoAppointment | null>(null)
 
   // Query providers and appointments from Convex
+  // Use local timezone date for display, but query a 2-day range to handle
+  // timezone offsets. Appointment dates synced from NexHealth are stored in
+  // UTC, so a local date may correspond to a different UTC date string.
   const todayStr = format(selectedDate, "yyyy-MM-dd")
+  const nextDayStr = format(addDays(selectedDate, 1), "yyyy-MM-dd")
   const rawProviders = useQuery(api.providers.queries.list as any, {})
-  const rawAppointments = useQuery(api.scheduling.queries.getByDate as any, { date: todayStr })
+  const rawAppointments = useQuery(api.scheduling.queries.getByDate as any, {
+    date: todayStr,
+    dateEnd: nextDayStr,
+  })
 
   // Map Convex provider docs to DemoProvider shape
   const providers: DemoProvider[] = useMemo(() => {
@@ -65,36 +72,50 @@ export default function SchedulingPage() {
     }))
   }, [rawProviders])
 
-  // Map Convex appointment docs to DemoAppointment shape
+  // Map Convex appointment docs to DemoAppointment shape.
+  // Filter by local date: appointment dates stored in UTC may differ from
+  // the local date string, so compare using Date objects in the local timezone.
   const appointments: DemoAppointment[] = useMemo(() => {
     if (!rawAppointments) return []
-    return (rawAppointments as any[]).map((a: any) => ({
-      id: a._id,
-      patientName: a.patientName ?? "Unknown Patient",
-      patientDob: a.patientDob ?? "",
-      providerId: a.providerId ?? "",
-      operatory: a.operatoryName ?? "Unassigned",
-      date: a.date ?? todayStr,
-      startTime: a.startTime ?? "08:00",
-      endTime: a.endTime ?? "09:00",
-      duration: a.duration ?? 60,
-      status: a.status ?? "scheduled",
-      category: a.category ?? "other",
-      typeName: a.appointmentTypeName ?? "Appointment",
-      productionAmount: a.productionAmount ?? 0,
-      procedures: a.procedures ?? [],
-      notes: a.notes,
-    }))
-  }, [rawAppointments, todayStr])
+    return (rawAppointments as any[])
+      .filter((a: any) => {
+        if (!a.date) return true
+        // Appointment dates from NexHealth are stored in UTC. A date-only
+        // string like "2026-02-10" parsed via new Date() is treated as UTC
+        // midnight, which in western-hemisphere timezones becomes the
+        // previous local calendar day (e.g. Feb 9 at 6 PM CST). Use the
+        // same interpretation to match the user's selected local date.
+        const apptLocal = new Date(a.date)
+        return (
+          apptLocal.getFullYear() === selectedDate.getFullYear() &&
+          apptLocal.getMonth() === selectedDate.getMonth() &&
+          apptLocal.getDate() === selectedDate.getDate()
+        )
+      })
+      .map((a: any) => ({
+        id: a._id,
+        patientName: a.patientName ?? "Unknown Patient",
+        patientDob: a.patientDob ?? "",
+        providerId: a.providerId ?? "",
+        operatory: a.operatoryName ?? "Unassigned",
+        date: a.date ?? todayStr,
+        startTime: a.startTime ?? "08:00",
+        endTime: a.endTime ?? "09:00",
+        duration: a.duration ?? 60,
+        status: a.status ?? "scheduled",
+        category: a.category ?? "other",
+        typeName: a.appointmentTypeName ?? "Appointment",
+        productionAmount: a.productionAmount ?? 0,
+        procedures: a.procedures ?? [],
+        notes: a.notes,
+      }))
+  }, [rawAppointments, todayStr, selectedDate])
 
   // Loading state
   const isLoading = rawProviders === undefined || rawAppointments === undefined
 
-  // Stats
-  const todayAppointments = useMemo(
-    () => appointments.filter((a) => a.date === todayStr),
-    [appointments, todayStr]
-  )
+  // Stats — appointments are already filtered to the selected local date
+  const todayAppointments = appointments
   const totalAppointments = todayAppointments.length
   const expectedProduction = todayAppointments.reduce(
     (sum, a) => sum + a.productionAmount,

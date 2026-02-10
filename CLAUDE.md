@@ -299,7 +299,7 @@ AI assistant integrated into the Oscar dashboard for answering questions about p
 
 ## Sprint Progress
 
-All 8 core sprints + 6 post-sprint milestones DONE. 43 routes, build clean.
+All 8 core sprints + 7 post-sprint milestones DONE. 44 routes, build clean.
 
 | Phase | What |
 |-------|------|
@@ -311,6 +311,7 @@ All 8 core sprints + 6 post-sprint milestones DONE. 43 routes, build clean.
 | AGT | Oscar Consult Agent V1: Claude Agent SDK, 4 specialist agents, `/api/chat` SSE route, inter-agent messaging, chat UI |
 | CWE | Collections Workflow Engine: wired to Convex queries/mutations, fixed `currentStep` day-number bug, patient join, loading states |
 | IWP | Internal Pages Wiring: claims actions (View Errors/Check/View Denial), denials actions (Acknowledge/Escalate), dynamic appeal page (full Convex rewrite), static appeal redirect, tasks page cleanup (toast feedback) |
+| QA1 | Browser Audit + Display Fixes: fixed React hooks ordering violations (7 pages), patient name resolution (denials, payment-plans, reconciliation), scheduling calendar timezone fix, perfect-day $NaN/undefined, appointment type display, AI actions JSON formatting — 14 files, build clean |
 
 ## UI Data Sources
 
@@ -379,6 +380,9 @@ All 8 core sprints + 6 post-sprint milestones DONE. 43 routes, build clean.
 - **Node modules corruption** after package installs → `rm -rf node_modules && npm install` fixes it
 - **Clerk key validation** — Clerk validates publishable key format at build time; provider detects placeholders and shows setup screen instead
 - **`collectionSequences.currentStep`** stores DAY NUMBERS (0, 7, 14, 30, 60, 90), NOT array indices. Use `STEP_DAY_TO_INDEX` mapping to convert before indexing into `STEP_CONFIG[]`
+- **React hooks ordering** — NEVER wrap `useQuery`/`useMutation` in try-catch blocks; NEVER place early returns (loading/empty guards) before `useMemo`/`useCallback` hooks. All hooks must be called unconditionally at the top of the component. Cast mutations: `useMutation(api.foo.mutations.bar as any) as ((args: any) => Promise<any>) | null`
+- **Patient name resolution pattern** — When a page displays patient IDs (from denials, payments, claims, etc.), query `api.patients.queries.list` with `{ limit: 1000, status: "all" }`, build a `Map<string, string>` keyed by both `_id` and `pmsPatientId`, use for display lookups
+- **Scheduling calendar timezone** — NexHealth stores appointment dates in UTC; calendar must query a 2-day range (`date` + next day) via `dateEnd` param and filter client-side using `new Date()` local timezone interpretation
 
 ## Phase Roadmap
 

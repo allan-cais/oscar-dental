@@ -176,11 +176,84 @@ function confidenceColor(confidence: number): string {
   return "text-red-600 dark:text-red-400"
 }
 
+function truncate(text: string, max: number): string {
+  return text.length > max ? text.slice(0, max) + "..." : text
+}
+
+function formatMetricName(metric: string): string {
+  return metric.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
+}
+
+function formatAiDescription(description: string, actionType: string): string {
+  let parsed: Record<string, unknown>
+  try {
+    parsed = JSON.parse(description)
+  } catch {
+    return description
+  }
+
+  switch (actionType) {
+    case "ar_prioritization": {
+      const amt = parsed.claimAmount != null ? `$${Number(parsed.claimAmount).toLocaleString()}` : ""
+      const age = parsed.ageDays != null ? `${parsed.ageDays}d old` : ""
+      const hist = parsed.payerHistory ? String(parsed.payerHistory).replace(/_/g, " ") : ""
+      return truncate([amt && `Claim ${amt}`, age, hist].filter(Boolean).join(" · "), 60)
+    }
+    case "payer_alert": {
+      const payer = parsed.payerName ? String(parsed.payerName) : ""
+      const metric = parsed.metric ? formatMetricName(String(parsed.metric)) : ""
+      const val = parsed.currentValue != null ? String(parsed.currentValue) : ""
+      return truncate([payer, metric, val].filter(Boolean).join(" · "), 60)
+    }
+    case "cost_estimate": {
+      const procs = Array.isArray(parsed.procedures) ? (parsed.procedures as string[]).join(", ") : ""
+      const plan = parsed.insurancePlan ? String(parsed.insurancePlan) : ""
+      return truncate([procs, plan].filter(Boolean).join(" · "), 60)
+    }
+    case "patient_suggestion":
+    case "patient_suggest": {
+      const slot = parsed.slotTime ? String(parsed.slotTime) : ""
+      const type = parsed.slotType ? String(parsed.slotType) : ""
+      const day = parsed.dayOfWeek ? String(parsed.dayOfWeek) : ""
+      const dur = parsed.slotDuration ? `${parsed.slotDuration}min` : ""
+      return truncate([slot && `${day} ${slot}`.trim(), type, dur].filter(Boolean).join(" · "), 60)
+    }
+    case "satisfaction_prediction": {
+      const apptType = parsed.appointmentType ? String(parsed.appointmentType).replace(/_/g, " ") : ""
+      const wait = parsed.waitTimeMinutes != null ? `${parsed.waitTimeMinutes}min wait` : ""
+      const rating = parsed.providerRating != null ? `Rating ${parsed.providerRating}` : ""
+      return truncate([apptType, wait, rating].filter(Boolean).join(" · "), 60)
+    }
+    case "denial_categorization": {
+      const code = parsed.denialCode ? String(parsed.denialCode) : ""
+      const amt = parsed.claimAmount != null ? `$${Number(parsed.claimAmount).toLocaleString()}` : ""
+      const payer = parsed.payerName ? String(parsed.payerName) : ""
+      return truncate([code, amt, payer].filter(Boolean).join(" · "), 60)
+    }
+    case "appeal_letter": {
+      const reason = parsed.denialReason ? String(parsed.denialReason) : ""
+      const proc = parsed.procedure ? String(parsed.procedure) : ""
+      return truncate([reason, proc].filter(Boolean).join(" · "), 60)
+    }
+    case "review_response": {
+      const rating = parsed.rating != null ? `${parsed.rating}-star` : ""
+      const text = parsed.reviewText ? String(parsed.reviewText) : ""
+      return truncate([rating, text].filter(Boolean).join(" · "), 60)
+    }
+    default: {
+      const entries = Object.entries(parsed).slice(0, 3)
+      const parts = entries.map(([k, v]) => `${k}: ${v}`)
+      return truncate(parts.join(", "), 60)
+    }
+  }
+}
+
 function mapToPendingAction(doc: any): PendingAction {
+  const rawDesc = doc.output ?? doc.input ?? "AI action"
   return {
     id: doc._id,
     type: doc.actionType,
-    description: doc.output ?? doc.input ?? "AI action",
+    description: formatAiDescription(rawDesc, doc.actionType),
     resource: `${doc.resourceType ?? "Resource"} #${doc.resourceId ?? "unknown"}`,
     confidence: Math.round((doc.confidence ?? 0) * 100),
     createdAt: doc.createdAt ?? doc._creationTime ?? Date.now(),
@@ -202,11 +275,12 @@ function mapToHistoryAction(doc: any): HistoryAction {
     timeToReview = formatReviewTime(doc.rejectedAt - doc.createdAt)
   }
 
+  const rawDesc = doc.output ?? doc.input ?? "AI action"
   return {
     id: doc._id,
     date: doc.updatedAt ?? doc.createdAt ?? doc._creationTime ?? Date.now(),
     type: doc.actionType,
-    description: doc.output ?? doc.input ?? "AI action",
+    description: formatAiDescription(rawDesc, doc.actionType),
     confidence: Math.round((doc.confidence ?? 0) * 100),
     outcome,
     reviewedBy: doc.status === "completed" ? "Auto" : doc.approvedBy ?? doc.rejectedBy ?? "Staff",
